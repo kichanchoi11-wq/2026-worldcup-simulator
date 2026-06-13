@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import { getTeamVerificationData } from "@/data/teamVerificationData";
@@ -8,7 +9,7 @@ export default function TeamInfoCard({ team }: { team: TeamRef }) {
   const slotText = `${team.group}조 · ${team.position}번 자리`;
 
   return (
-    <article className="rounded border border-white/10 bg-white/[0.06] p-4">
+    <Link href={`/teams/${team.teamSlug}`} className="block rounded border border-white/10 bg-white/[0.06] p-4 transition hover:border-trophy/50 hover:bg-white/[0.09] focus:outline-none focus:ring-2 focus:ring-trophy/60">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <FlagIcon src={team.flagImageUrl} alt={team.flagAlt} fallback={team.flag} size="lg" />
@@ -19,35 +20,22 @@ export default function TeamInfoCard({ team }: { team: TeamRef }) {
         <Badge tone={team.verificationStatus}>{team.verificationStatus}</Badge>
       </div>
       <dl className="space-y-2 text-sm">
-        <InfoRow label="감독" value={verification?.coachName ?? "확인 필요"} />
-        <InfoRow label="선수 명단" value={verification?.squadSummary ?? "확인 필요"} />
-        <InfoRow label="기본 전형" value={verification?.formationSummary ?? "확인 필요"} />
-        <InfoRow label="전술 메모" value={verification?.tacticsSummary ?? "확인 필요"} />
-        <InfoRow label="예상 라인업" value={verification?.lineupSummary ?? "공식 선발표 확인 필요"} />
-        <InfoRow label="부상·징계" value={verification?.riskSummary ?? "공식 리포트 확인 필요"} />
+        <InfoRow label="감독" value={verification?.coach.coachName ?? "감독 정보 확인 필요"} />
+        <InfoRow label="선수 명단" value={verification?.players.length ? `${verification.players.length}명 확인` : "공식 소집 명단 확인 필요"} />
+        <InfoRow label="포메이션" value={verification?.formation.formation ?? "확인 필요"} />
+        <InfoRow label="전술 분석" value={verification?.tactics.summary ?? "재검증 필요"} />
+        <InfoRow label="예상 라인업" value={verification?.expectedLineup.players.length ? `${verification.expectedLineup.players.length}명` : "표시 불가"} />
+        <InfoRow label="카드·부상" value={verification?.playerStatuses.length ? `${verification.playerStatuses.length}건` : "확인 필요"} />
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Badge tone={verification?.squadStatus === "공식 확인" ? "공식 확인" : "확인 필요"}>
-          명단 {verification?.squadStatus ?? "확인 필요"}
-        </Badge>
-        <Badge tone={verification?.formationStatus === "분석 참고" ? "분석 참고" : "확인 필요"}>
-          전형 {verification?.formationStatus ?? "확인 필요"}
-        </Badge>
-        <Badge tone={verification?.lineupStatus === "확인 필요" ? "확인 필요" : "공식 확인"}>
-          선발 {verification?.lineupStatus ?? "확인 필요"}
-        </Badge>
+        <Badge tone={verification?.dataStatus.squad ?? "확인 필요"}>명단 {verification?.dataStatus.squad ?? "확인 필요"}</Badge>
+        <Badge tone={verification?.dataStatus.formation ?? "확인 필요"}>전형 {verification?.dataStatus.formation ?? "확인 필요"}</Badge>
+        <Badge tone={verification?.dataStatus.lineup ?? "표시 불가"}>선발 {verification?.dataStatus.lineup ?? "표시 불가"}</Badge>
       </div>
-      {verification?.squadSourceUrl ? (
-        <a
-          href={verification.squadSourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 block rounded border border-white/10 bg-pitch-900/80 p-3 text-xs font-semibold leading-5 text-trophy transition hover:bg-white/10"
-        >
-          출처: {verification.squadSourceName}
-        </a>
-      ) : null}
-    </article>
+      <p className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-3 text-xs font-semibold leading-5 text-trophy">
+        상세 페이지 보기
+      </p>
+    </Link>
   );
 }
 

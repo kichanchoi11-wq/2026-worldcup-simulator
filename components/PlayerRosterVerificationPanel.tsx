@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import { teamVerificationData } from "@/data/teamVerificationData";
@@ -46,14 +47,20 @@ export default function PlayerRosterVerificationPanel({ teams }: { teams: TeamRe
                 <h3 className="mt-2 text-lg font-black text-white">{selectedTeam.nameKo}</h3>
                 <p className="text-sm text-white/55">{selectedTeam.group}조 · {selectedTeam.position}번 자리</p>
               </div>
-              <Badge tone="공식 확인">공식 확인</Badge>
+              <Badge tone={verification?.dataStatus.squad ?? "확인 필요"}>{verification?.dataStatus.squad ?? "확인 필요"}</Badge>
             </div>
             <dl className="mt-4 space-y-2 text-sm">
-              <Info label="감독" value={verification?.coachName ?? "확인 필요"} />
-              <Info label="공식 소집 명단" value={verification?.squadSummary ?? "확인 필요"} />
-              <Info label="표시 가능한 선수 수" value={`${verification?.squadPlayerCount ?? 0}명`} />
-              <Info label="경기 선발 명단" value={verification?.lineupSummary ?? "공식 발표 확인 필요"} />
+              <Info label="감독" value={verification?.coach.coachName ?? "감독 정보 확인 필요"} />
+              <Info label="공식 소집 명단" value={verification?.players.length ? `${verification.players.length}명 확인` : "공식 출처 확인 필요"} />
+              <Info label="표시 가능한 선수 수" value={`${verification?.players.length ?? 0}명`} />
+              <Info label="경기 선발 명단" value={verification?.expectedLineup.players.length ? `${verification.expectedLineup.players.length}명 확인` : "표시 불가"} />
             </dl>
+            <Link
+              href={`/teams/${selectedTeam.teamSlug}`}
+              className="mt-4 inline-flex rounded border border-trophy/60 bg-trophy/20 px-3 py-2 text-sm font-black text-white transition hover:bg-trophy/30"
+            >
+              국가 상세 페이지 보기
+            </Link>
           </article>
           <article className="rounded border border-sky-300/25 bg-sky-400/10 p-4">
             <h3 className="font-black text-sky-50">출처와 갱신 기준</h3>
@@ -61,16 +68,9 @@ export default function PlayerRosterVerificationPanel({ teams }: { teams: TeamRe
               {verification?.notes.join(" ") ??
                 "출처 없는 선수명은 오류 방지를 위해 표시하지 않습니다. 공식 출처가 확인되면 선수 명단 테이블에 표시됩니다."}
             </p>
-            {verification?.squadSourceUrl ? (
-              <a
-                href={verification.squadSourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-flex rounded border border-sky-200/30 bg-sky-300/10 px-3 py-2 text-sm font-black text-sky-50"
-              >
-                최종 명단 출처 열기
-              </a>
-            ) : null}
+            <p className="mt-4 rounded border border-sky-200/30 bg-sky-300/10 p-3 text-sm font-semibold text-sky-50">
+              출처 없는 선수명은 오류 방지를 위해 표시하지 않습니다.
+            </p>
           </article>
         </div>
       ) : null}

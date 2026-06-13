@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Badge from "@/components/Badge";
 import type { FootballMatch } from "@/types/football";
 
@@ -8,7 +9,7 @@ export default function MatchCard({ match }: { match: FootballMatch }) {
       : `${match.score.home} : ${match.score.away}`;
 
   return (
-    <article className="rounded border border-white/10 bg-white/[0.06] p-4">
+    <Link href={`/matches/${match.id}`} className="block rounded border border-white/10 bg-white/[0.06] p-4 transition hover:border-trophy/50 hover:bg-white/[0.09]">
       <div className="mb-3 flex items-center justify-between gap-3">
         <Badge tone="API 실제 데이터">API 실제 데이터</Badge>
         <span className="text-xs font-semibold text-white/55">{match.status}</span>
@@ -23,6 +24,6 @@ export default function MatchCard({ match }: { match: FootballMatch }) {
         <span>{match.utcDate ? new Date(match.utcDate).toLocaleString("ko-KR") : "일정 확인 필요"}</span>
         <span>{match.venue ?? "경기장 확인 필요"}</span>
       </div>
-    </article>
+    </Link>
   );
 }

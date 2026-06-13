@@ -35,6 +35,7 @@ export function getBaseGroups() {
         flag: slot.flagEmoji ?? "🏳️",
         flagImageUrl: slot.flagImageUrl,
         flagAlt: slot.flagAlt,
+        teamSlug: slot.teamSlug,
         dataSourceType: slot.sourceType,
         verificationStatus: toDisplayBadge(slot.verificationStatus),
         sourceName: slot.sourceName,

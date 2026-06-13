@@ -1,7 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import Badge from "@/components/Badge";
+import { matchDetails } from "@/data/matchDetails";
+import { teamVerificationData } from "@/data/teamVerificationData";
 import { validateGroupStageForTournament } from "@/lib/bracket";
 import { getGroupDataAudit } from "@/lib/scenario";
 import { readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
@@ -59,6 +62,18 @@ export default function AdminReviewPanel() {
   const [storageSnapshot, setStorageSnapshot] = useState<AdminStorageSnapshot>(emptyStorageSnapshot);
 
   const audit = getGroupDataAudit();
+  const teamDetailAudit = {
+    total: teamVerificationData.length,
+    missingSquads: teamVerificationData.filter((team) => team.players.length === 0).length,
+    missingCoaches: teamVerificationData.filter((team) => !team.coach.coachName || !team.coach.sourceName || !team.coach.sourceUrl || !team.coach.lastUpdated).length,
+    missingFormations: teamVerificationData.filter((team) => !team.formation.formation || team.formation.players.length !== 11).length,
+    missingTactics: teamVerificationData.filter((team) => !team.tactics.summary || !team.tactics.sourceUrl).length
+  };
+  const matchDetailAudit = {
+    total: matchDetails.length,
+    missingDates: matchDetails.filter((match) => !match.dateTime).length,
+    missingStadiums: matchDetails.filter((match) => !match.stadium).length
+  };
   const snapshot = {
     aiGroup: storageSnapshot.aiGroup,
     scenario: storageSnapshot.scenario,
@@ -159,7 +174,7 @@ export default function AdminReviewPanel() {
       <div className="rounded border border-red-300/25 bg-red-400/10 p-5">
         <h2 className="text-xl font-black text-white">관리자 검토 모드</h2>
         <p className="mt-2 text-sm leading-relaxed text-red-50/80">
-          출처 없는 선수·감독·전술 정보는 확정 데이터로 저장하지 않습니다. 기존 저장소는 전체 삭제하지 않고 목적별 키만 관리합니다.
+          출처 없는 데이터는 확정 정보로 저장할 수 없습니다. 선수명, 감독명, 포메이션, 전술 설명, 카드/징계/부상 정보는 반드시 출처명, 출처 URL, 업데이트 날짜가 있어야 확정 표시할 수 있습니다.
         </p>
       </div>
 
@@ -171,6 +186,50 @@ export default function AdminReviewPanel() {
         <StatusItem label="빈 자리" value={`${audit.emptySlots.length}개`} tone={audit.emptySlots.length > 0 ? "warning" : "success"} />
         <StatusItem label="수동 확인" value={`${audit.manuallyVerified.length}팀`} tone="warning" />
         <StatusItem label="저장 경기" value={`${storageSnapshot.apiMatches.length}개`} tone="API 실제 데이터" />
+      </section>
+
+      <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-white">국가·경기 상세 데이터 검증</h3>
+            <p className="mt-1 text-sm text-white/60">출처 없는 선수·감독·전술·포메이션은 상세 페이지에서 확인 필요 또는 표시 불가로 처리됩니다.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/teams/korea-republic" className="rounded border border-trophy/60 bg-trophy/20 px-3 py-2 text-sm font-black text-white">
+              국가 상세 미리보기
+            </Link>
+            <Link href="/matches/group-a-3" className="rounded border border-sky-300/50 bg-sky-400/15 px-3 py-2 text-sm font-black text-white">
+              경기 상세 미리보기
+            </Link>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <DebugItem label="국가 상세 페이지 수" value={`${teamDetailAudit.total}개`} />
+          <DebugItem label="선수 명단 출처 확인 필요" value={`${teamDetailAudit.missingSquads}개`} />
+          <DebugItem label="감독 재검증 필요" value={`${teamDetailAudit.missingCoaches}개`} />
+          <DebugItem label="포메이션 재검증 필요" value={`${teamDetailAudit.missingFormations}개`} />
+          <DebugItem label="전술 재검증 필요" value={`${teamDetailAudit.missingTactics}개`} />
+          <DebugItem label="경기 상세 페이지 수" value={`${matchDetailAudit.total}개`} />
+          <DebugItem label="경기 일정 확인 필요" value={`${matchDetailAudit.missingDates}개`} />
+          <DebugItem label="경기장 확인 필요" value={`${matchDetailAudit.missingStadiums}개`} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {[
+            "감독 정보 재검증",
+            "포메이션 정보 재검증",
+            "전술 정보 재검증",
+            "예상 라인업 재검증",
+            "경기별 카드/징계/부상 정보 재검증",
+            "출처 없는 선수 데이터 숨기기",
+            "출처 없는 감독/전술/포메이션 숨기기",
+            "잘못된 데이터 비활성화"
+          ].map((item) => (
+            <div key={item} className="rounded border border-white/10 bg-pitch-900/80 p-3">
+              <p className="text-sm font-semibold text-white">{item}</p>
+              <Badge tone="확인 필요">대기</Badge>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">

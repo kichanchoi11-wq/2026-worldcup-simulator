@@ -50,8 +50,22 @@ type MigrationResult = {
   touchedKeys: string[];
 };
 
-const currentMigrationVersion = "2026-06-empty-slot-sanitizer";
+const currentMigrationVersion = "2026-06-team-match-detail-sanitizer";
 const temporarySlotKeyword = "\uc2ac\ub86f";
+const sourceRequiredKeys = new Set([
+  "coachName",
+  "formation",
+  "tacticalNotes",
+  "summary",
+  "attackingStyle",
+  "defensiveStyle",
+  "pressingStyle",
+  "buildUpStyle",
+  "transitionStyle",
+  "setPieceStyle",
+  "expectedLineup",
+  "lineup"
+]);
 const migratableStorageKeys: StorageKey[] = [
   storageKeys.aiGroupSimulationData,
   storageKeys.aiTournamentSimulationData,
@@ -62,6 +76,10 @@ const migratableStorageKeys: StorageKey[] = [
 
 function containsTemporarySlotName(value: unknown) {
   return typeof value === "string" && value.includes(temporarySlotKeyword);
+}
+
+function hasCompleteSourceRecord(value: Record<string, unknown>) {
+  return Boolean(value.sourceName && value.sourceUrl && value.lastUpdated);
 }
 
 function sanitizeTemporarySlotData(value: unknown): { value: unknown; changed: boolean } {
@@ -87,6 +105,7 @@ function sanitizeTemporarySlotData(value: unknown): { value: unknown; changed: b
   let changed = false;
   const source = value as Record<string, unknown>;
   const next: Record<string, unknown> = {};
+  const hasCompleteSource = hasCompleteSourceRecord(source);
 
   for (const [key, item] of Object.entries(source)) {
     if ((key === "teamName" || key === "nameKo") && containsTemporarySlotName(item)) {
@@ -95,6 +114,25 @@ function sanitizeTemporarySlotData(value: unknown): { value: unknown; changed: b
       next.dataSourceType = "확인 필요 데이터";
       next.sourceType = "확인 필요 데이터";
       next.migrationNote = "임시 자리명은 실제 팀명으로 사용하지 않습니다.";
+      changed = true;
+      continue;
+    }
+
+    if (sourceRequiredKeys.has(key) && item && !hasCompleteSource) {
+      next[key] = null;
+      next.verificationStatus = "재검증 필요";
+      next.dataSourceType = "확인 필요 데이터";
+      next.sourceType = "확인 필요 데이터";
+      next.migrationNote = "출처 없는 감독/전술/포메이션/라인업 데이터는 확정 정보로 취급하지 않습니다.";
+      changed = true;
+      continue;
+    }
+
+    if (key === "playerName" && item && !hasCompleteSource) {
+      next[key] = item;
+      next.squadStatus = "확인 필요";
+      next.availability = "확인 필요";
+      next.migrationNote = "출처 없는 선수 데이터는 확정 정보로 표시하지 않습니다.";
       changed = true;
       continue;
     }

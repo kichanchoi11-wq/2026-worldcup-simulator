@@ -18,8 +18,14 @@ export type DisplayBadge =
   | "확인 필요"
   | "분석 참고"
   | "재검증 필요"
+  | "표시 불가"
   | "표시 금지"
   | "오래된 정보"
+  | "출전 가능"
+  | "출전 불투명"
+  | "출전 금지"
+  | "결장"
+  | "징계 결장"
   | "부상"
   | "징계"
   | "경고 누적 위험"
@@ -47,6 +53,7 @@ export interface WorldCupGroupSlot extends Partial<SourceMeta> {
   flagEmoji?: string | null;
   flagImageUrl: string;
   flagAlt: string;
+  teamSlug: string;
   sourceType: DataSourceType;
   verificationStatus: GroupSlotVerificationStatus;
   confidence: VerificationConfidence;
@@ -71,6 +78,7 @@ export interface TeamRef extends Partial<SourceMeta> {
   flag: string;
   flagImageUrl?: string | null;
   flagAlt?: string | null;
+  teamSlug: string;
   dataSourceType: DataSourceType;
   verificationStatus: DisplayBadge;
 }

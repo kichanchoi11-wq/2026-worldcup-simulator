@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Badge from "@/components/Badge";
 import type { BracketMatch } from "@/types/bracket";
 
@@ -17,7 +18,7 @@ export default function Bracket({ matches }: { matches: BracketMatch[] }) {
             </div>
             <div className="space-y-3">
               {roundMatches.map((match) => (
-                <article key={match.matchId} className="rounded border border-white/10 bg-pitch-900/80 p-3">
+                <Link key={match.matchId} href={`/matches/${match.matchId}`} className="block rounded border border-white/10 bg-pitch-900/80 p-3 transition hover:border-trophy/50 hover:bg-white/[0.08]">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="text-xs font-black text-trophy">{match.matchId}번</span>
                     <span className="text-[11px] text-white/45">{match.teamASeed} / {match.teamBSeed}</span>
@@ -33,7 +34,7 @@ export default function Bracket({ matches }: { matches: BracketMatch[] }) {
                   {match.unresolvedReason ? (
                     <p className="mt-2 text-xs leading-relaxed text-amber-100/80">{match.unresolvedReason}</p>
                   ) : null}
-                </article>
+                </Link>
               ))}
             </div>
           </section>

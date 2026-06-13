@@ -1,6 +1,8 @@
+import Link from "next/link";
 import Badge from "@/components/Badge";
 import DataSourceBadge from "@/components/DataSourceBadge";
 import FlagIcon from "@/components/FlagIcon";
+import { getGroupMatchDetails } from "@/data/matchDetails";
 import type { TeamGroup } from "@/types/football";
 
 const temporarySlotKeyword = "\uc2ac\ub86f";
@@ -40,7 +42,7 @@ export default function GroupTable({ groups }: { groups: TeamGroup[] }) {
           </div>
           <div className="space-y-2">
             {group.teams.map((team, index) => (
-              <article key={team.id} className="min-w-0 rounded border border-white/10 bg-pitch-900/75 p-3">
+              <Link key={team.id} href={`/teams/${team.teamSlug}`} className="block min-w-0 rounded border border-white/10 bg-pitch-900/75 p-3 transition hover:border-trophy/50 hover:bg-white/[0.08]">
                 <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
                   <span className="grid h-9 w-9 place-items-center rounded bg-white/10 text-sm font-black text-white">{index + 1}</span>
                   <div className="min-w-0">
@@ -65,18 +67,32 @@ export default function GroupTable({ groups }: { groups: TeamGroup[] }) {
                   </div>
                 </dl>
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <button type="button" className="min-w-0 rounded border border-white/10 bg-white/5 px-2 py-2 text-xs font-black text-white/80">
+                  <span className="min-w-0 rounded border border-white/10 bg-white/5 px-2 py-2 text-center text-xs font-black text-white/80">
                     실제 결과
-                  </button>
-                  <button type="button" className="min-w-0 rounded border border-violet-300/30 bg-violet-400/10 px-2 py-2 text-xs font-black text-violet-50">
+                  </span>
+                  <span className="min-w-0 rounded border border-violet-300/30 bg-violet-400/10 px-2 py-2 text-center text-xs font-black text-violet-50">
                     AI 예측
-                  </button>
-                  <button type="button" className="min-w-0 rounded border border-amber-300/30 bg-amber-400/10 px-2 py-2 text-xs font-black text-amber-50">
-                    사용자 입력
-                  </button>
+                  </span>
+                  <span className="min-w-0 rounded border border-trophy/60 bg-trophy/20 px-2 py-2 text-center text-xs font-black text-amber-50">
+                    상세 보기
+                  </span>
                 </div>
-              </article>
+              </Link>
             ))}
+          </div>
+          <div className="mt-4 rounded border border-white/10 bg-pitch-900/60 p-3">
+            <h3 className="font-black text-white">조별 경기 상세</h3>
+            <div className="mt-3 grid gap-2">
+              {getGroupMatchDetails(group.id).map((match) => (
+                <Link
+                  key={match.matchId}
+                  href={`/matches/${match.matchId}`}
+                  className="rounded border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/80 transition hover:border-trophy/50 hover:bg-white/10"
+                >
+                  {match.homeTeamName ?? "홈팀 확인 필요"} vs {match.awayTeamName ?? "원정팀 확인 필요"}
+                </Link>
+              ))}
+            </div>
           </div>
         </section>
       ))}
