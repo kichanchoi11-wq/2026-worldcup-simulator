@@ -8,6 +8,9 @@ export type DataSourceType =
 
 export type DisplayBadge =
   | "공식"
+  | "공식 확인"
+  | "API 확인"
+  | "수동 확인"
   | "API 실제 데이터"
   | "AI 예측"
   | "사용자 입력"
@@ -28,6 +31,24 @@ export type VerificationConfidence =
   | "확인 필요"
   | "표시 금지";
 
+export type GroupSlotVerificationStatus =
+  | "공식 확인"
+  | "API 확인"
+  | "수동 확인"
+  | "확인 필요";
+
+export interface WorldCupGroupSlot extends Partial<SourceMeta> {
+  groupId: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L";
+  position: 1 | 2 | 3 | 4;
+  teamName: string | null;
+  teamNameEn: string | null;
+  teamCode?: string | null;
+  flagEmoji?: string | null;
+  sourceType: DataSourceType;
+  verificationStatus: GroupSlotVerificationStatus;
+  confidence: VerificationConfidence;
+}
+
 export interface SourceMeta {
   sourceName: string | null;
   sourceUrl: string | null;
@@ -42,6 +63,8 @@ export interface TeamRef extends Partial<SourceMeta> {
   nameEn: string;
   group: string;
   slot: string;
+  position: number;
+  teamCode?: string | null;
   flag: string;
   dataSourceType: DataSourceType;
   verificationStatus: DisplayBadge;

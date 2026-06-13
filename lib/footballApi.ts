@@ -11,7 +11,7 @@ function missingKeyEnvelope<T>(data: T): FootballApiEnvelope<T> {
     ok: false,
     source: "football-data.org",
     lastUpdated: new Date().toISOString(),
-    message: "API 키가 설정되지 않아 실시간 데이터를 불러올 수 없습니다. Vercel 환경변수를 확인해 주세요.",
+    message: "football-data.org API 키가 설정되지 않아 실시간 데이터를 불러올 수 없습니다. 저장된 실제 데이터와 사용자 입력 데이터는 그대로 유지합니다.",
     data
   };
 }
@@ -36,7 +36,7 @@ export async function fetchFootballData<T>(path: string, fallback: T): Promise<F
         ok: false,
         source: "football-data.org",
         lastUpdated: new Date().toISOString(),
-        message: "API 데이터를 불러오지 못했습니다. 기존 저장 데이터를 유지합니다.",
+        message: `football-data.org API 요청이 실패했습니다. HTTP ${response.status} 응답이어서 기존 저장 데이터를 유지합니다.`,
         data: fallback
       };
     }
@@ -54,7 +54,7 @@ export async function fetchFootballData<T>(path: string, fallback: T): Promise<F
       ok: false,
       source: "football-data.org",
       lastUpdated: new Date().toISOString(),
-      message: "API 데이터를 불러오지 못했습니다. 기존 저장 데이터를 유지합니다.",
+      message: "football-data.org API에 연결하지 못했습니다. 네트워크 또는 환경변수를 확인하고, 기존 저장 데이터는 유지합니다.",
       data: fallback
     };
   }

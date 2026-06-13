@@ -3,7 +3,11 @@ export const storageKeys = {
   aiTournamentSimulationData: "aiTournamentSimulationData",
   userSimulationData: "userSimulationData",
   scenarioCalculatorData: "scenarioCalculatorData",
-  savedScenarioList: "savedScenarioList"
+  savedScenarioList: "savedScenarioList",
+  apiMatchesData: "apiMatchesData",
+  apiStandingsData: "apiStandingsData",
+  adminManualGroupEntries: "adminManualGroupEntries",
+  dataMigrationVersion: "dataMigrationVersion"
 } as const;
 
 export type StorageKey = (typeof storageKeys)[keyof typeof storageKeys];
@@ -39,4 +43,104 @@ export function removeStorageItem(key: StorageKey) {
   }
 
   window.localStorage.removeItem(key);
+}
+
+type MigrationResult = {
+  migrated: boolean;
+  touchedKeys: string[];
+};
+
+const currentMigrationVersion = "2026-06-empty-slot-sanitizer";
+const temporarySlotKeyword = "\uc2ac\ub86f";
+const migratableStorageKeys: StorageKey[] = [
+  storageKeys.aiGroupSimulationData,
+  storageKeys.aiTournamentSimulationData,
+  storageKeys.userSimulationData,
+  storageKeys.scenarioCalculatorData,
+  storageKeys.savedScenarioList
+];
+
+function containsTemporarySlotName(value: unknown) {
+  return typeof value === "string" && value.includes(temporarySlotKeyword);
+}
+
+function sanitizeTemporarySlotData(value: unknown): { value: unknown; changed: boolean } {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const sanitized = sanitizeTemporarySlotData(item);
+      changed = changed || sanitized.changed;
+      return sanitized.value;
+    });
+
+    return { value: next, changed };
+  }
+
+  if (!value || typeof value !== "object") {
+    if (containsTemporarySlotName(value)) {
+      return { value: "공식 출처 확인 필요", changed: true };
+    }
+
+    return { value, changed: false };
+  }
+
+  let changed = false;
+  const source = value as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+
+  for (const [key, item] of Object.entries(source)) {
+    if ((key === "teamName" || key === "nameKo") && containsTemporarySlotName(item)) {
+      next[key] = null;
+      next.verificationStatus = "재검증 필요";
+      next.dataSourceType = "확인 필요 데이터";
+      next.sourceType = "확인 필요 데이터";
+      next.migrationNote = "임시 자리명은 실제 팀명으로 사용하지 않습니다.";
+      changed = true;
+      continue;
+    }
+
+    const sanitized = sanitizeTemporarySlotData(item);
+    next[key] = sanitized.value;
+    changed = changed || sanitized.changed;
+  }
+
+  return { value: next, changed };
+}
+
+export function migrateStoredFootballData(): MigrationResult {
+  if (typeof window === "undefined") {
+    return { migrated: false, touchedKeys: [] };
+  }
+
+  const previousVersion = window.localStorage.getItem(storageKeys.dataMigrationVersion);
+  if (previousVersion === currentMigrationVersion) {
+    return { migrated: false, touchedKeys: [] };
+  }
+
+  const touchedKeys: string[] = [];
+
+  for (const key of migratableStorageKeys) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const sanitized = sanitizeTemporarySlotData(parsed);
+      if (sanitized.changed) {
+        window.localStorage.setItem(key, JSON.stringify(sanitized.value));
+        touchedKeys.push(key);
+      }
+    } catch {
+      touchedKeys.push(`${key}:parse-skip`);
+    }
+  }
+
+  window.localStorage.setItem(storageKeys.dataMigrationVersion, currentMigrationVersion);
+
+  return {
+    migrated: touchedKeys.length > 0,
+    touchedKeys
+  };
 }

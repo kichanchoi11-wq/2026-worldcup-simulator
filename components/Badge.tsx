@@ -7,6 +7,9 @@ type BadgeProps = {
 
 const toneClass: Record<string, string> = {
   공식: "border-emerald-300/50 bg-emerald-400/15 text-emerald-50",
+  "공식 확인": "border-emerald-300/50 bg-emerald-400/15 text-emerald-50",
+  "API 확인": "border-sky-300/50 bg-sky-400/15 text-sky-50",
+  "수동 확인": "border-teal-300/50 bg-teal-400/15 text-teal-50",
   "API 실제 데이터": "border-sky-300/50 bg-sky-400/15 text-sky-50",
   "AI 예측": "border-violet-300/50 bg-violet-400/15 text-violet-50",
   "사용자 입력": "border-amber-300/50 bg-amber-400/15 text-amber-50",

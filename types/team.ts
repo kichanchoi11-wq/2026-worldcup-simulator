@@ -1,5 +1,12 @@
 import type { DisplayBadge, SourceMeta, VerificationConfidence } from "@/types/football";
 
+export type VerificationStatus =
+  | "공식 확인"
+  | "신뢰도 높음"
+  | "재검증 필요"
+  | "확인 필요"
+  | "표시 불가";
+
 export type PlayerPosition = "GK" | "DF" | "MF" | "FW" | "확인 필요";
 export type Availability = "출전 가능" | "출전 불투명" | "결장" | "확인 필요";
 export type SquadStatus = "공식 소집" | "최근 경기 엔트리" | "예상" | "확인 필요" | "제외";
@@ -77,4 +84,31 @@ export interface TeamInformation {
   tactics: TacticsData;
   playerStatuses: PlayerStatus[];
   sources: SourceMeta[];
+}
+
+export interface TeamVerificationData {
+  teamName: string;
+  groupId: string | null;
+  groupPosition: number | null;
+  squadStatus: VerificationStatus;
+  coachStatus: VerificationStatus;
+  formationStatus: VerificationStatus;
+  tacticsStatus: VerificationStatus;
+  lineupStatus: VerificationStatus;
+  injurySuspensionStatus: VerificationStatus;
+  squadSourceName: string | null;
+  squadSourceUrl: string | null;
+  coachSourceName: string | null;
+  coachSourceUrl: string | null;
+  formationSourceName: string | null;
+  formationSourceUrl: string | null;
+  lastUpdated: string | null;
+  notes: string[];
+}
+
+export interface VerificationRequirement {
+  title: string;
+  status: VerificationStatus;
+  description: string;
+  requiredSources: string[];
 }
