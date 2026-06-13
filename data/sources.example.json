@@ -1,0 +1,27 @@
+{
+  "footballData": {
+    "sourceName": "football-data.org",
+    "sourceUrl": "https://www.football-data.org/",
+    "usage": "경기 일정, 결과, 순위표를 서버 API Route에서 조회"
+  },
+  "officialPriority": [
+    "FIFA 공식 사이트",
+    "각 국가 축구협회 공식 홈페이지",
+    "국가대표팀 공식 SNS",
+    "공식 경기 리포트",
+    "공식 소집 명단 발표 자료",
+    "AFC, UEFA, CONMEBOL, CONCACAF, CAF, OFC 공식 자료",
+    "FotMob",
+    "SofaScore",
+    "Transfermarkt",
+    "ESPN",
+    "BBC Sport",
+    "Sky Sports",
+    "Reuters",
+    "AP"
+  ],
+  "rules": [
+    "출처 URL과 업데이트 날짜가 없는 선수, 감독, 전술, 포메이션 정보는 확정 정보로 표시하지 않습니다.",
+    "공식 3위 배정표가 확보되기 전에는 3위 팀 슬롯을 임의 배정하지 않습니다."
+  ]
+}

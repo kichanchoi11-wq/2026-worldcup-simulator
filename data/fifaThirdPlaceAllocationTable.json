@@ -1,0 +1,18 @@
+{
+  "status": "확인 필요",
+  "notice": "3위 팀 공식 배정표가 없어 32강 대진을 완전히 확정할 수 없습니다. 공식 배정표 확인이 필요합니다.",
+  "lastUpdated": null,
+  "sourceName": null,
+  "sourceUrl": null,
+  "slotEligibility": {
+    "74": ["A", "B", "C", "D", "F"],
+    "77": ["C", "D", "F", "G", "H"],
+    "79": ["C", "E", "F", "H", "I"],
+    "80": ["E", "H", "I", "J", "K"],
+    "81": ["B", "E", "F", "I", "J"],
+    "82": ["A", "E", "H", "I", "J"],
+    "85": ["E", "F", "G", "I", "J"],
+    "87": ["D", "E", "I", "J", "L"]
+  },
+  "allocationCombinations": []
+}

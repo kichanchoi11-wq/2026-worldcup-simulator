@@ -1,0 +1,79 @@
+{
+  "lastUpdated": null,
+  "source": "공식 조 편성 API 또는 공식 발표 확인 전",
+  "notice": "정적 기본 데이터는 팀 슬롯만 제공합니다. 실제 팀명, 선수, 감독, 전술, 포메이션은 공식 출처 또는 football-data.org API 확인 후 표시합니다.",
+  "groups": [
+    { "id": "A", "name": "A조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "A1", "nameKo": "A조 1번 슬롯", "nameEn": "Group A Slot 1", "group": "A", "slot": "A1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "A2", "nameKo": "A조 2번 슬롯", "nameEn": "Group A Slot 2", "group": "A", "slot": "A2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "A3", "nameKo": "A조 3번 슬롯", "nameEn": "Group A Slot 3", "group": "A", "slot": "A3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "A4", "nameKo": "A조 4번 슬롯", "nameEn": "Group A Slot 4", "group": "A", "slot": "A4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "B", "name": "B조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "B1", "nameKo": "B조 1번 슬롯", "nameEn": "Group B Slot 1", "group": "B", "slot": "B1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "B2", "nameKo": "B조 2번 슬롯", "nameEn": "Group B Slot 2", "group": "B", "slot": "B2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "B3", "nameKo": "B조 3번 슬롯", "nameEn": "Group B Slot 3", "group": "B", "slot": "B3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "B4", "nameKo": "B조 4번 슬롯", "nameEn": "Group B Slot 4", "group": "B", "slot": "B4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "C", "name": "C조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "C1", "nameKo": "C조 1번 슬롯", "nameEn": "Group C Slot 1", "group": "C", "slot": "C1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "C2", "nameKo": "C조 2번 슬롯", "nameEn": "Group C Slot 2", "group": "C", "slot": "C2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "C3", "nameKo": "C조 3번 슬롯", "nameEn": "Group C Slot 3", "group": "C", "slot": "C3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "C4", "nameKo": "C조 4번 슬롯", "nameEn": "Group C Slot 4", "group": "C", "slot": "C4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "D", "name": "D조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "D1", "nameKo": "D조 1번 슬롯", "nameEn": "Group D Slot 1", "group": "D", "slot": "D1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "D2", "nameKo": "D조 2번 슬롯", "nameEn": "Group D Slot 2", "group": "D", "slot": "D2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "D3", "nameKo": "D조 3번 슬롯", "nameEn": "Group D Slot 3", "group": "D", "slot": "D3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "D4", "nameKo": "D조 4번 슬롯", "nameEn": "Group D Slot 4", "group": "D", "slot": "D4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "E", "name": "E조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "E1", "nameKo": "E조 1번 슬롯", "nameEn": "Group E Slot 1", "group": "E", "slot": "E1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "E2", "nameKo": "E조 2번 슬롯", "nameEn": "Group E Slot 2", "group": "E", "slot": "E2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "E3", "nameKo": "E조 3번 슬롯", "nameEn": "Group E Slot 3", "group": "E", "slot": "E3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "E4", "nameKo": "E조 4번 슬롯", "nameEn": "Group E Slot 4", "group": "E", "slot": "E4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "F", "name": "F조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "F1", "nameKo": "F조 1번 슬롯", "nameEn": "Group F Slot 1", "group": "F", "slot": "F1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "F2", "nameKo": "F조 2번 슬롯", "nameEn": "Group F Slot 2", "group": "F", "slot": "F2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "F3", "nameKo": "F조 3번 슬롯", "nameEn": "Group F Slot 3", "group": "F", "slot": "F3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "F4", "nameKo": "F조 4번 슬롯", "nameEn": "Group F Slot 4", "group": "F", "slot": "F4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "G", "name": "G조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "G1", "nameKo": "G조 1번 슬롯", "nameEn": "Group G Slot 1", "group": "G", "slot": "G1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "G2", "nameKo": "G조 2번 슬롯", "nameEn": "Group G Slot 2", "group": "G", "slot": "G2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "G3", "nameKo": "G조 3번 슬롯", "nameEn": "Group G Slot 3", "group": "G", "slot": "G3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "G4", "nameKo": "G조 4번 슬롯", "nameEn": "Group G Slot 4", "group": "G", "slot": "G4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "H", "name": "H조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "H1", "nameKo": "H조 1번 슬롯", "nameEn": "Group H Slot 1", "group": "H", "slot": "H1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "H2", "nameKo": "H조 2번 슬롯", "nameEn": "Group H Slot 2", "group": "H", "slot": "H2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "H3", "nameKo": "H조 3번 슬롯", "nameEn": "Group H Slot 3", "group": "H", "slot": "H3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "H4", "nameKo": "H조 4번 슬롯", "nameEn": "Group H Slot 4", "group": "H", "slot": "H4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "I", "name": "I조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "I1", "nameKo": "I조 1번 슬롯", "nameEn": "Group I Slot 1", "group": "I", "slot": "I1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "I2", "nameKo": "I조 2번 슬롯", "nameEn": "Group I Slot 2", "group": "I", "slot": "I2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "I3", "nameKo": "I조 3번 슬롯", "nameEn": "Group I Slot 3", "group": "I", "slot": "I3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "I4", "nameKo": "I조 4번 슬롯", "nameEn": "Group I Slot 4", "group": "I", "slot": "I4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "J", "name": "J조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "J1", "nameKo": "J조 1번 슬롯", "nameEn": "Group J Slot 1", "group": "J", "slot": "J1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "J2", "nameKo": "J조 2번 슬롯", "nameEn": "Group J Slot 2", "group": "J", "slot": "J2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "J3", "nameKo": "J조 3번 슬롯", "nameEn": "Group J Slot 3", "group": "J", "slot": "J3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "J4", "nameKo": "J조 4번 슬롯", "nameEn": "Group J Slot 4", "group": "J", "slot": "J4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "K", "name": "K조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "K1", "nameKo": "K조 1번 슬롯", "nameEn": "Group K Slot 1", "group": "K", "slot": "K1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "K2", "nameKo": "K조 2번 슬롯", "nameEn": "Group K Slot 2", "group": "K", "slot": "K2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "K3", "nameKo": "K조 3번 슬롯", "nameEn": "Group K Slot 3", "group": "K", "slot": "K3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "K4", "nameKo": "K조 4번 슬롯", "nameEn": "Group K Slot 4", "group": "K", "slot": "K4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] },
+    { "id": "L", "name": "L조", "sourceType": "확인 필요 데이터", "teams": [
+      { "id": "L1", "nameKo": "L조 1번 슬롯", "nameEn": "Group L Slot 1", "group": "L", "slot": "L1", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "L2", "nameKo": "L조 2번 슬롯", "nameEn": "Group L Slot 2", "group": "L", "slot": "L2", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "L3", "nameKo": "L조 3번 슬롯", "nameEn": "Group L Slot 3", "group": "L", "slot": "L3", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" },
+      { "id": "L4", "nameKo": "L조 4번 슬롯", "nameEn": "Group L Slot 4", "group": "L", "slot": "L4", "flag": "🏳️", "dataSourceType": "확인 필요 데이터", "verificationStatus": "확인 필요", "sourceName": null, "sourceUrl": null, "lastUpdated": null, "isOfficial": false, "confidence": "확인 필요" }
+    ] }
+  ]
+}
