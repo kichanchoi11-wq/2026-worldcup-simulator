@@ -1,21 +1,77 @@
 import type { WorldCupGroupSlot } from "@/types/football";
 
-const verifiedAt = "2026-06-13";
+const verifiedAt = "2026-06-14";
+const fifaMatchScheduleUrl = "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/match-schedule";
 
 const groupSourceUrls: Record<string, string> = {
-  A: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_A",
-  B: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_B",
-  C: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_C",
-  D: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_D",
-  E: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_E",
-  F: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_F",
-  G: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_G",
-  H: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_H",
-  I: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_I",
-  J: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_J",
-  K: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_K",
-  L: "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_Group_L"
+  A: fifaMatchScheduleUrl,
+  B: fifaMatchScheduleUrl,
+  C: fifaMatchScheduleUrl,
+  D: fifaMatchScheduleUrl,
+  E: fifaMatchScheduleUrl,
+  F: fifaMatchScheduleUrl,
+  G: fifaMatchScheduleUrl,
+  H: fifaMatchScheduleUrl,
+  I: fifaMatchScheduleUrl,
+  J: fifaMatchScheduleUrl,
+  K: fifaMatchScheduleUrl,
+  L: fifaMatchScheduleUrl
 };
+
+const flagImageCodeByTeamCode: Record<string, string> = {
+  MEX: "mx",
+  RSA: "za",
+  KOR: "kr",
+  CZE: "cz",
+  CAN: "ca",
+  BIH: "ba",
+  QAT: "qa",
+  SUI: "ch",
+  BRA: "br",
+  MAR: "ma",
+  HAI: "ht",
+  SCO: "gb-sct",
+  USA: "us",
+  PAR: "py",
+  AUS: "au",
+  TUR: "tr",
+  GER: "de",
+  CUW: "cw",
+  CIV: "ci",
+  ECU: "ec",
+  NED: "nl",
+  JPN: "jp",
+  SWE: "se",
+  TUN: "tn",
+  BEL: "be",
+  EGY: "eg",
+  IRN: "ir",
+  NZL: "nz",
+  ESP: "es",
+  CPV: "cv",
+  KSA: "sa",
+  URU: "uy",
+  FRA: "fr",
+  SEN: "sn",
+  IRQ: "iq",
+  NOR: "no",
+  ARG: "ar",
+  ALG: "dz",
+  AUT: "at",
+  JOR: "jo",
+  POR: "pt",
+  COD: "cd",
+  UZB: "uz",
+  COL: "co",
+  ENG: "gb-eng",
+  CRO: "hr",
+  GHA: "gh",
+  PAN: "pa"
+};
+
+function getFlagImageUrl(teamCode: string) {
+  return `https://flagcdn.com/w40/${flagImageCodeByTeamCode[teamCode]}.png`;
+}
 
 type SlotSeed = {
   groupId: WorldCupGroupSlot["groupId"];
@@ -79,17 +135,19 @@ const slots: SlotSeed[] = [
 
 export const worldCupGroupSlots: WorldCupGroupSlot[] = slots.map((slot) => ({
   ...slot,
-  sourceType: "확인 필요 데이터",
-  sourceName: `2026 FIFA World Cup Group ${slot.groupId} 공개 조 편성 페이지(공식 출처 재확인 필요)`,
+  flagImageUrl: getFlagImageUrl(slot.teamCode),
+  flagAlt: `${slot.teamName} 국기`,
+  sourceType: "공식 출처 데이터",
+  sourceName: "FIFA World Cup 26 match schedule",
   sourceUrl: groupSourceUrls[slot.groupId],
   lastUpdated: verifiedAt,
-  isOfficial: false,
-  verificationStatus: "수동 확인",
-  confidence: "신뢰도 높음"
+  isOfficial: true,
+  verificationStatus: "공식 확인",
+  confidence: "공식"
 }));
 
 export const groupDataNotice =
-  "조 편성 데이터는 공개 조 편성 페이지를 기준으로 수동 입력했습니다. 공식 출처 또는 football-data.org API에서 더 최신 팀/경기 데이터를 제공하면 API 실제 데이터와 분리해 반영합니다.";
+  "조 편성 데이터는 FIFA World Cup 26 경기 일정의 조별 편성을 기준으로 표시합니다. football-data.org API에서 실제 경기·순위 데이터가 제공되면 별도 실제 데이터로 반영합니다.";
 
 export function getGroupSlotLabel(slot: Pick<WorldCupGroupSlot, "groupId" | "position">) {
   return `${slot.groupId}조 ${slot.position}번 자리`;

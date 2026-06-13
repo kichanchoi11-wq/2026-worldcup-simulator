@@ -16,6 +16,7 @@ export type DisplayBadge =
   | "사용자 입력"
   | "경우의 수"
   | "확인 필요"
+  | "분석 참고"
   | "재검증 필요"
   | "표시 금지"
   | "오래된 정보"
@@ -44,6 +45,8 @@ export interface WorldCupGroupSlot extends Partial<SourceMeta> {
   teamNameEn: string | null;
   teamCode?: string | null;
   flagEmoji?: string | null;
+  flagImageUrl: string;
+  flagAlt: string;
   sourceType: DataSourceType;
   verificationStatus: GroupSlotVerificationStatus;
   confidence: VerificationConfidence;
@@ -66,6 +69,8 @@ export interface TeamRef extends Partial<SourceMeta> {
   position: number;
   teamCode?: string | null;
   flag: string;
+  flagImageUrl?: string | null;
+  flagAlt?: string | null;
   dataSourceType: DataSourceType;
   verificationStatus: DisplayBadge;
 }

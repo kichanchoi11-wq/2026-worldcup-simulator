@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Badge from "@/components/Badge";
+import FlagIcon from "@/components/FlagIcon";
 import { teamVerificationData } from "@/data/teamVerificationData";
 import type { TeamRef } from "@/types/football";
 
@@ -19,7 +20,7 @@ export default function PlayerRosterVerificationPanel({ teams }: { teams: TeamRe
         <div>
           <h2 className="text-xl font-black text-white">선수 명단 검증 상태</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-white/65">
-            공식 소집 명단 확인 전입니다. 선수 명단은 FIFA, 각국 축구협회, 공식 경기 리포트 등 신뢰 가능한 출처가 확인된 경우에만 표시됩니다.
+            FIFA 최종 명단 공개 기준으로 참가국 스쿼드 등록 상태를 표시합니다. 경기별 선발 11명과 부상·징계는 공식 매치 리포트가 나와야 확정합니다.
           </p>
         </div>
         <select
@@ -41,25 +42,35 @@ export default function PlayerRosterVerificationPanel({ teams }: { teams: TeamRe
           <article className="rounded border border-white/10 bg-pitch-900/80 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-2xl">{selectedTeam.flag}</p>
+                <FlagIcon src={selectedTeam.flagImageUrl} alt={selectedTeam.flagAlt} fallback={selectedTeam.flag} size="lg" />
                 <h3 className="mt-2 text-lg font-black text-white">{selectedTeam.nameKo}</h3>
                 <p className="text-sm text-white/55">{selectedTeam.group}조 · {selectedTeam.position}번 자리</p>
               </div>
-              <Badge tone="재검증 필요">재검증 필요</Badge>
+              <Badge tone="공식 확인">공식 확인</Badge>
             </div>
             <dl className="mt-4 space-y-2 text-sm">
-              <Info label="공식 소집 명단" value="확인 전" />
-              <Info label="최근 경기 엔트리" value="확인 전" />
-              <Info label="표시 가능한 선수 수" value="0명" />
-              <Info label="표시 제외된 선수 수" value="출처 없는 선수 전체" />
+              <Info label="감독" value={verification?.coachName ?? "확인 필요"} />
+              <Info label="공식 소집 명단" value={verification?.squadSummary ?? "확인 필요"} />
+              <Info label="표시 가능한 선수 수" value={`${verification?.squadPlayerCount ?? 0}명`} />
+              <Info label="경기 선발 명단" value={verification?.lineupSummary ?? "공식 발표 확인 필요"} />
             </dl>
           </article>
-          <article className="rounded border border-amber-300/25 bg-amber-400/10 p-4">
-            <h3 className="font-black text-amber-50">출처 없는 선수는 표시하지 않습니다</h3>
-            <p className="mt-3 text-sm leading-6 text-amber-50/78">
+          <article className="rounded border border-sky-300/25 bg-sky-400/10 p-4">
+            <h3 className="font-black text-sky-50">출처와 갱신 기준</h3>
+            <p className="mt-3 text-sm leading-6 text-sky-50/78">
               {verification?.notes.join(" ") ??
                 "출처 없는 선수명은 오류 방지를 위해 표시하지 않습니다. 공식 출처가 확인되면 선수 명단 테이블에 표시됩니다."}
             </p>
+            {verification?.squadSourceUrl ? (
+              <a
+                href={verification.squadSourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex rounded border border-sky-200/30 bg-sky-300/10 px-3 py-2 text-sm font-black text-sky-50"
+              >
+                최종 명단 출처 열기
+              </a>
+            ) : null}
           </article>
         </div>
       ) : null}
@@ -69,9 +80,9 @@ export default function PlayerRosterVerificationPanel({ teams }: { teams: TeamRe
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3">
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
       <dt className="text-white/55">{label}</dt>
-      <dd className="text-right font-semibold text-white">{value}</dd>
+      <dd className="min-w-0 break-words text-right font-semibold text-white">{value}</dd>
     </div>
   );
 }

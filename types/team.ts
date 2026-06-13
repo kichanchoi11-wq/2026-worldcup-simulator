@@ -3,6 +3,7 @@ import type { DisplayBadge, SourceMeta, VerificationConfidence } from "@/types/f
 export type VerificationStatus =
   | "공식 확인"
   | "신뢰도 높음"
+  | "분석 참고"
   | "재검증 필요"
   | "확인 필요"
   | "표시 불가";
@@ -90,18 +91,27 @@ export interface TeamVerificationData {
   teamName: string;
   groupId: string | null;
   groupPosition: number | null;
+  coachName: string;
+  squadPlayerCount: number;
   squadStatus: VerificationStatus;
   coachStatus: VerificationStatus;
   formationStatus: VerificationStatus;
   tacticsStatus: VerificationStatus;
   lineupStatus: VerificationStatus;
   injurySuspensionStatus: VerificationStatus;
+  squadSummary: string;
+  formationSummary: string;
+  tacticsSummary: string;
+  lineupSummary: string;
+  riskSummary: string;
   squadSourceName: string | null;
   squadSourceUrl: string | null;
   coachSourceName: string | null;
   coachSourceUrl: string | null;
   formationSourceName: string | null;
   formationSourceUrl: string | null;
+  analysisSourceName: string | null;
+  analysisSourceUrl: string | null;
   lastUpdated: string | null;
   notes: string[];
 }

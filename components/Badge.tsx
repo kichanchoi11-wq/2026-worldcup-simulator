@@ -15,6 +15,7 @@ const toneClass: Record<string, string> = {
   "사용자 입력": "border-amber-300/50 bg-amber-400/15 text-amber-50",
   "경우의 수": "border-fuchsia-300/50 bg-fuchsia-400/15 text-fuchsia-50",
   "확인 필요": "border-zinc-300/40 bg-zinc-400/15 text-zinc-100",
+  "분석 참고": "border-cyan-300/50 bg-cyan-400/15 text-cyan-50",
   "재검증 필요": "border-orange-300/50 bg-orange-400/15 text-orange-50",
   "표시 금지": "border-red-300/50 bg-red-400/15 text-red-50",
   "오래된 정보": "border-stone-300/50 bg-stone-400/15 text-stone-50",
@@ -31,7 +32,7 @@ const toneClass: Record<string, string> = {
 
 export default function Badge({ children, tone = "neutral" }: BadgeProps) {
   return (
-    <span className={`inline-flex items-center rounded border px-2 py-1 text-xs font-semibold ${toneClass[tone]}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${toneClass[tone]}`}>
       {children}
     </span>
   );
