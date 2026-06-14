@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
 import { readStorage, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
+import type { ApiFootballUsageSnapshot } from "@/types/football";
 
 type PanelSize = "compact" | "full";
 
@@ -34,6 +35,21 @@ function formatDate(value: string | null) {
   }
 }
 
+const defaultApiUsage: ApiFootballUsageSnapshot = {
+  dateKey: "unknown",
+  used: 0,
+  limit: 100,
+  softLimit: 95,
+  remaining: 100,
+  resetAt: "",
+  blocked: false,
+  warning: null
+};
+
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function FootballDataRefreshPanel({ size = "full" }: { size?: PanelSize }) {
   const [snapshot, setSnapshot] = useState<FootballDataRefreshSnapshot | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -48,52 +64,65 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   }, []);
 
   function persistSnapshot(nextSnapshot: FootballDataRefreshSnapshot) {
+    const data = nextSnapshot.data;
+    const matches = asArray(data?.matches);
+    const standings = asArray(data?.standings);
+    const teams = asArray(data?.teams);
+    const resourceSnapshots = asArray(data?.resourceSnapshots);
+    const fallbackResources = data?.fallbackResources;
+    const teamAnalysisBundles = asArray(data?.teamAnalysisBundles);
+    const matchReviews = asArray(data?.matchReviews);
+    const providerStatus = data?.providerStatus;
+
     writeStorage(storageKeys.footballRefreshSnapshotData, nextSnapshot);
     writeStorage(storageKeys.lastManualRefreshData, nextSnapshot.refreshedAt);
 
-    if (nextSnapshot.data.matches.length > 0) {
-      writeStorage(storageKeys.apiMatchesData, nextSnapshot.data.matches);
+    if (matches.length > 0) {
+      writeStorage(storageKeys.apiMatchesData, matches);
     }
 
-    if (nextSnapshot.data.standings.length > 0) {
-      writeStorage(storageKeys.apiStandingsData, nextSnapshot.data.standings);
+    if (standings.length > 0) {
+      writeStorage(storageKeys.apiStandingsData, standings);
     }
 
-    if (nextSnapshot.data.teams.length > 0) {
-      writeStorage(storageKeys.apiFootballTeamsData, nextSnapshot.data.teams);
+    if (teams.length > 0) {
+      writeStorage(storageKeys.apiFootballTeamsData, teams);
     }
 
-    writeStorage(storageKeys.apiFootballResourceSnapshotsData, nextSnapshot.data.resourceSnapshots);
-    writeStorage(storageKeys.apiFootballPlayersData, nextSnapshot.data.fallbackResources.players);
-    writeStorage(storageKeys.apiFootballCoachesData, nextSnapshot.data.fallbackResources.coaches);
-    writeStorage(storageKeys.apiFootballLineupsData, nextSnapshot.data.fallbackResources.lineups);
-    writeStorage(storageKeys.apiFootballEventsData, nextSnapshot.data.fallbackResources.events);
-    writeStorage(storageKeys.apiFootballInjuriesData, nextSnapshot.data.fallbackResources.injuries);
-    writeStorage(storageKeys.apiFootballStatisticsData, nextSnapshot.data.fallbackResources.statistics);
-    writeStorage(storageKeys.apiFootballPredictionsData, nextSnapshot.data.fallbackResources.predictions);
-    writeStorage(storageKeys.apiFootballProviderStatusData, nextSnapshot.data.providerStatus);
-    writeStorage(storageKeys.apiFootballUsageLogsData, nextSnapshot.data.providerStatus.usageLogs);
-    writeStorage(storageKeys.apiFootballSyncLogsData, nextSnapshot.data.providerStatus.syncLogs);
+    writeStorage(storageKeys.apiFootballResourceSnapshotsData, resourceSnapshots);
+    writeStorage(storageKeys.apiFootballPlayersData, asArray(fallbackResources?.players));
+    writeStorage(storageKeys.apiFootballCoachesData, asArray(fallbackResources?.coaches));
+    writeStorage(storageKeys.apiFootballLineupsData, asArray(fallbackResources?.lineups));
+    writeStorage(storageKeys.apiFootballEventsData, asArray(fallbackResources?.events));
+    writeStorage(storageKeys.apiFootballInjuriesData, asArray(fallbackResources?.injuries));
+    writeStorage(storageKeys.apiFootballStatisticsData, asArray(fallbackResources?.statistics));
+    writeStorage(storageKeys.apiFootballPredictionsData, asArray(fallbackResources?.predictions));
+
+    if (providerStatus) {
+      writeStorage(storageKeys.apiFootballProviderStatusData, providerStatus);
+      writeStorage(storageKeys.apiFootballUsageLogsData, asArray(providerStatus.usageLogs));
+      writeStorage(storageKeys.apiFootballSyncLogsData, asArray(providerStatus.syncLogs));
+    }
 
     writeStorage(
       storageKeys.teamTacticsData,
-      nextSnapshot.data.teamAnalysisBundles.map((item) => item.coachTacticalProfile)
+      teamAnalysisBundles.map((item) => item.coachTacticalProfile)
     );
     writeStorage(
       storageKeys.teamFormationsData,
-      nextSnapshot.data.teamAnalysisBundles.map((item) => item.formationProfile)
+      teamAnalysisBundles.map((item) => item.formationProfile)
     );
     writeStorage(
       storageKeys.teamRiskProfilesData,
-      nextSnapshot.data.teamAnalysisBundles.map((item) => item.riskProfile)
+      teamAnalysisBundles.map((item) => item.riskProfile)
     );
     writeStorage(
       storageKeys.koreaVsTeamPredictionsData,
-      nextSnapshot.data.teamAnalysisBundles.map((item) => item.koreaPrediction)
+      teamAnalysisBundles.map((item) => item.koreaPrediction)
     );
 
-    if (nextSnapshot.data.matchReviews.length > 0) {
-      writeStorage(storageKeys.matchReviewsData, nextSnapshot.data.matchReviews);
+    if (matchReviews.length > 0) {
+      writeStorage(storageKeys.matchReviewsData, matchReviews);
     }
 
     setSnapshot(nextSnapshot);
@@ -116,6 +145,14 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     }
   }
 
+  const data = snapshot?.data;
+  const apiUsage = data?.providerStatus?.apiFootball ?? defaultApiUsage;
+  const teamAnalysisCount = asArray(data?.teamAnalysisBundles).length;
+  const apiTeamCount = asArray(data?.teams).length;
+  const resourceSnapshotCount = asArray(data?.resourceSnapshots).length;
+  const matchReviewCount = asArray(data?.matchReviews).length;
+  const results = asArray(snapshot?.results);
+
   return (
     <section className="rounded border border-sky-300/25 bg-sky-400/10 p-5 shadow-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -123,8 +160,8 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
           <div className="flex flex-wrap gap-2">
             <Badge tone="API 실제 데이터">서버 API Route</Badge>
             <Badge tone="success">API-Football 우선</Badge>
-            <Badge tone={snapshot?.autoUpdate.stable ? "success" : "warning"}>
-              자동 업데이트 {snapshot?.autoUpdate.stable ? "안정" : "확인 필요"}
+            <Badge tone={snapshot?.autoUpdate?.stable ? "success" : "warning"}>
+              자동 업데이트 {snapshot?.autoUpdate?.stable ? "안정" : "확인 필요"}
             </Badge>
           </div>
           <h2 className="mt-3 text-xl font-black text-white">최신 정보 업데이트</h2>
@@ -147,17 +184,17 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <Status label="마지막 수동 새로고침" value={formatDate(snapshot?.refreshedAt ?? null)} />
-        <Status label="API-Football 호출" value={`${snapshot?.data.providerStatus.apiFootball.used ?? 0}/${snapshot?.data.providerStatus.apiFootball.limit ?? 100}회`} />
-        <Status label="남은 호출" value={`${snapshot?.data.providerStatus.apiFootball.remaining ?? 100}회`} />
-        <Status label="팀 분석 묶음" value={`${snapshot?.data.teamAnalysisBundles.length ?? 0}팀`} />
-        <Status label="API 팀 정보" value={`${snapshot?.data.teams.length ?? 0}팀`} />
-        <Status label="리소스 저장 구조" value={`${snapshot?.data.resourceSnapshots.length ?? 0}종`} />
-        <Status label="경기 리뷰" value={`${snapshot?.data.matchReviews.length ?? 0}개`} />
+        <Status label="API-Football 호출" value={`${apiUsage.used}/${apiUsage.limit}회`} />
+        <Status label="남은 호출" value={`${apiUsage.remaining}회`} />
+        <Status label="팀 분석 묶음" value={`${teamAnalysisCount}팀`} />
+        <Status label="API 팀 정보" value={`${apiTeamCount}팀`} />
+        <Status label="리소스 저장 구조" value={`${resourceSnapshotCount}종`} />
+        <Status label="경기 리뷰" value={`${matchReviewCount}개`} />
       </div>
 
-      {snapshot?.data.providerStatus.apiFootball.warning ? (
+      {apiUsage.warning ? (
         <p className="mt-4 rounded border border-amber-300/30 bg-amber-400/10 p-3 text-sm font-semibold text-amber-50">
-          {snapshot.data.providerStatus.apiFootball.warning}
+          {apiUsage.warning}
         </p>
       ) : null}
 
@@ -167,7 +204,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
 
       {snapshot && size === "full" ? (
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {snapshot.results.map((result) => (
+          {results.map((result) => (
             <article key={result.id} className="rounded border border-white/10 bg-pitch-900/80 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge tone={statusTone(result.status)}>{result.status}</Badge>

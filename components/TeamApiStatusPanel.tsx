@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Badge from "@/components/Badge";
-import { readStorage, storageKeys } from "@/lib/storage";
+import { readArrayStorage, readStorage, storageKeys } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballResourceSnapshot, ApiFootballTeamRecord } from "@/types/football";
 
@@ -42,8 +42,8 @@ export default function TeamApiStatusPanel({ teamNameKo, teamNameEn, teamCode }:
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setState({
-        teams: readStorage<ApiFootballTeamRecord[]>(storageKeys.apiFootballTeamsData, []),
-        resourceSnapshots: readStorage<ApiFootballResourceSnapshot[]>(storageKeys.apiFootballResourceSnapshotsData, []),
+        teams: readArrayStorage<ApiFootballTeamRecord>(storageKeys.apiFootballTeamsData),
+        resourceSnapshots: readArrayStorage<ApiFootballResourceSnapshot>(storageKeys.apiFootballResourceSnapshotsData),
         providerStatus: readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null)
       });
     }, 0);
@@ -57,10 +57,13 @@ export default function TeamApiStatusPanel({ teamNameKo, teamNameEn, teamCode }:
 
     return state.teams.find((team) => {
       const apiCode = team.code?.toUpperCase();
-      const apiName = team.name.toLowerCase();
+      const apiName = typeof team.name === "string" ? team.name.toLowerCase() : "";
       return Boolean((code && apiCode === code) || names.has(apiName));
     });
   }, [state.teams, teamCode, teamNameEn, teamNameKo]);
+
+  const apiUsage = state.providerStatus?.apiFootball;
+  const cacheEntryCount = Array.isArray(state.providerStatus?.cacheEntries) ? state.providerStatus.cacheEntries.length : 0;
 
   return (
     <section className="rounded border border-sky-300/25 bg-sky-400/10 p-5 shadow-panel">
@@ -76,14 +79,14 @@ export default function TeamApiStatusPanel({ teamNameKo, teamNameEn, teamCode }:
           </p>
         </div>
         <div className="rounded border border-white/10 bg-pitch-900/80 p-3 text-sm font-semibold text-white/80">
-          남은 호출 {state.providerStatus?.apiFootball.remaining ?? 100}회
+          남은 호출 {apiUsage?.remaining ?? 100}회
         </div>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Status label="API 팀 매칭" value={apiTeam ? `${apiTeam.name}${apiTeam.code ? ` · ${apiTeam.code}` : ""}` : "저장된 API 팀 데이터 없음"} />
-        <Status label="API 호출량" value={`${state.providerStatus?.apiFootball.used ?? 0}/${state.providerStatus?.apiFootball.limit ?? 100}회`} />
-        <Status label="캐시 항목" value={`${state.providerStatus?.cacheEntries.length ?? 0}개`} />
+        <Status label="API 호출량" value={`${apiUsage?.used ?? 0}/${apiUsage?.limit ?? 100}회`} />
+        <Status label="캐시 항목" value={`${cacheEntryCount}개`} />
         <Status label="저장 리소스" value={`${state.resourceSnapshots.length}종`} />
       </div>
 

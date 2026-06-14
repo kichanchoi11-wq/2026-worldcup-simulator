@@ -50,6 +50,11 @@ export function readStorage<T>(key: StorageKey, fallback: T): T {
   }
 }
 
+export function readArrayStorage<T>(key: StorageKey): T[] {
+  const value = readStorage<unknown>(key, []);
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 export function writeStorage<T>(key: StorageKey, value: T) {
   if (typeof window === "undefined") {
     return;

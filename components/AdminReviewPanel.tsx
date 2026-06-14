@@ -9,7 +9,7 @@ import { teamVerificationData } from "@/data/teamVerificationData";
 import { getAdvancedTeamDataAudit, getBrokenPlayerNameAudit } from "@/lib/teamAnalysis";
 import { validateGroupStageForTournament } from "@/lib/bracket";
 import { getGroupDataAudit } from "@/lib/scenario";
-import { migrateStoredFootballData, readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
+import { migrateStoredFootballData, readArrayStorage, readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballResourceSnapshot, FootballApiEnvelope, FootballMatch, StandingRow, WorldCupGroupSlot } from "@/types/football";
 import type { FullTournamentPrediction, GroupSimulationData, ScenarioCalculatorData } from "@/types/simulation";
@@ -121,6 +121,15 @@ export default function AdminReviewPanel() {
     aiValidation: validateGroupStageForTournament(storageSnapshot.aiGroup),
     scenarioValidation: validateGroupStageForTournament(storageSnapshot.scenario)
   };
+  const apiUsage = storageSnapshot.apiProviderStatus?.apiFootball;
+  const apiCacheEntryCount = Array.isArray(storageSnapshot.apiProviderStatus?.cacheEntries) ? storageSnapshot.apiProviderStatus.cacheEntries.length : 0;
+  const providerOrder = Array.isArray(storageSnapshot.apiProviderStatus?.providerOrder)
+    ? storageSnapshot.apiProviderStatus.providerOrder.join(" → ")
+    : "api-football → football-data.org → cache → static";
+  const predictedQualifiedTeamCount = Array.isArray(storageSnapshot.fullPrediction?.qualifiedTeams)
+    ? storageSnapshot.fullPrediction.qualifiedTeams.length
+    : snapshot.aiValidation.count;
+  const refreshStable = storageSnapshot.fullPrediction?.refreshStatus?.stable === true;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -128,11 +137,11 @@ export default function AdminReviewPanel() {
         aiGroup: readStorage<GroupSimulationData | null>(storageKeys.aiGroupSimulationData, null),
         fullPrediction: readStorage<FullTournamentPrediction | null>(storageKeys.fullTournamentPredictionData, null),
         scenario: readStorage<ScenarioCalculatorData | null>(storageKeys.scenarioCalculatorData, null),
-        apiMatches: readStorage<FootballMatch[]>(storageKeys.apiMatchesData, []),
-        apiStandings: readStorage<StandingRow[]>(storageKeys.apiStandingsData, []),
-        apiResourceSnapshots: readStorage<ApiFootballResourceSnapshot[]>(storageKeys.apiFootballResourceSnapshotsData, []),
+        apiMatches: readArrayStorage<FootballMatch>(storageKeys.apiMatchesData),
+        apiStandings: readArrayStorage<StandingRow>(storageKeys.apiStandingsData),
+        apiResourceSnapshots: readArrayStorage<ApiFootballResourceSnapshot>(storageKeys.apiFootballResourceSnapshotsData),
         apiProviderStatus: readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null),
-        manualEntries: readStorage<ManualGroupEntry[]>(storageKeys.adminManualGroupEntries, [])
+        manualEntries: readArrayStorage<ManualGroupEntry>(storageKeys.adminManualGroupEntries)
       });
     }, 0);
 
@@ -280,8 +289,8 @@ export default function AdminReviewPanel() {
         <StatusItem label="저장 경기" value={`${storageSnapshot.apiMatches.length}개`} tone="API 실제 데이터" />
         <StatusItem
           label="API-Football"
-          value={`${storageSnapshot.apiProviderStatus?.apiFootball.used ?? 0}/${storageSnapshot.apiProviderStatus?.apiFootball.limit ?? 100}회`}
-          tone={storageSnapshot.apiProviderStatus?.apiFootball.blocked ? "warning" : "success"}
+          value={`${apiUsage?.used ?? 0}/${apiUsage?.limit ?? 100}회`}
+          tone={apiUsage?.blocked ? "warning" : "success"}
         />
       </section>
 
@@ -408,9 +417,9 @@ export default function AdminReviewPanel() {
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <DebugItem label="전체 예측 생성 여부" value={storageSnapshot.fullPrediction ? "있음" : "없음"} />
           <DebugItem label="예측 생성 시각" value={storageSnapshot.fullPrediction?.generatedAt ?? "생성 전"} />
-          <DebugItem label="AI 32강 진출팀 수" value={`${storageSnapshot.fullPrediction?.qualifiedTeams.length ?? snapshot.aiValidation.count}팀`} />
+          <DebugItem label="AI 32강 진출팀 수" value={`${predictedQualifiedTeamCount}팀`} />
           <DebugItem label="예상 우승팀" value={storageSnapshot.fullPrediction?.champion?.nameKo ?? "예측 전"} />
-          <DebugItem label="새로고침 안정성" value={storageSnapshot.fullPrediction?.refreshStatus.stable ? "안정" : "버튼 제외"} />
+          <DebugItem label="새로고침 안정성" value={refreshStable ? "안정" : "버튼 제외"} />
         </div>
       </section>
 
@@ -432,12 +441,12 @@ export default function AdminReviewPanel() {
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <DebugItem
             label="API-Football 호출"
-            value={`${storageSnapshot.apiProviderStatus?.apiFootball.used ?? 0}/${storageSnapshot.apiProviderStatus?.apiFootball.limit ?? 100}회`}
+            value={`${apiUsage?.used ?? 0}/${apiUsage?.limit ?? 100}회`}
           />
-          <DebugItem label="남은 호출" value={`${storageSnapshot.apiProviderStatus?.apiFootball.remaining ?? 100}회`} />
+          <DebugItem label="남은 호출" value={`${apiUsage?.remaining ?? 100}회`} />
           <DebugItem label="리소스 저장 구조" value={`${storageSnapshot.apiResourceSnapshots.length}종`} />
-          <DebugItem label="서버 캐시 항목" value={`${storageSnapshot.apiProviderStatus?.cacheEntries.length ?? 0}개`} />
-          <DebugItem label="fallback 순서" value={storageSnapshot.apiProviderStatus?.providerOrder.join(" → ") ?? "api-football → football-data.org → cache → static"} />
+          <DebugItem label="서버 캐시 항목" value={`${apiCacheEntryCount}개`} />
+          <DebugItem label="fallback 순서" value={providerOrder} />
         </div>
       </section>
 

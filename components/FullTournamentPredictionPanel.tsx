@@ -65,6 +65,36 @@ function formatGeneratedAt(value: string | null | undefined) {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}
+
+function hasRound(value: unknown): value is TournamentRoundPrediction {
+  return isRecord(value) && Array.isArray(value.matches);
+}
+
+function isFullTournamentPrediction(value: unknown): value is FullTournamentPrediction {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.generatedAt === "string" &&
+    typeof value.modelVersion === "string" &&
+    Array.isArray(value.dataCards) &&
+    Array.isArray(value.sourceSummary) &&
+    Array.isArray(value.teamProfiles) &&
+    Array.isArray(value.groupStage) &&
+    Array.isArray(value.qualifiedTeams) &&
+    Array.isArray(value.thirdPlaceQualifiers) &&
+    Array.isArray(value.uncertaintyFactors) &&
+    hasRound(value.roundOf32) &&
+    hasRound(value.roundOf16) &&
+    hasRound(value.quarterFinals) &&
+    hasRound(value.semiFinals)
+  );
+}
+
 export default function FullTournamentPredictionPanel({ groups }: { groups: TeamGroup[] }) {
   const [prediction, setPrediction] = useState<FullTournamentPrediction | null>(null);
   const [scope, setScope] = useState<PredictionScope>("full");
@@ -73,7 +103,8 @@ export default function FullTournamentPredictionPanel({ groups }: { groups: Team
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setPrediction(readStorage<FullTournamentPrediction | null>(storageKeys.fullTournamentPredictionData, null));
+      const storedPrediction = readStorage<unknown>(storageKeys.fullTournamentPredictionData, null);
+      setPrediction(isFullTournamentPrediction(storedPrediction) ? storedPrediction : null);
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -122,7 +153,7 @@ export default function FullTournamentPredictionPanel({ groups }: { groups: Team
       });
       const data = (await response.json()) as FullPredictionResponse;
 
-      if (!response.ok || !data.ok) {
+      if (!response.ok || !data.ok || !isFullTournamentPrediction(data.prediction)) {
         throw new Error(data.message ?? "AI 예측 실행에 실패했습니다.");
       }
 
