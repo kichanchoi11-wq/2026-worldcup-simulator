@@ -2,16 +2,26 @@ import Link from "next/link";
 import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import { getTeamVerificationData } from "@/data/teamVerificationData";
+import { getTeamAnalysisBundle } from "@/lib/teamAnalysis";
+import { sanitizeDisplayText } from "@/lib/textSanitizer";
 import type { TeamRef } from "@/types/football";
 
 export default function TeamInfoCard({ team }: { team: TeamRef }) {
   const verification = getTeamVerificationData(team.nameKo);
+  const analysis = verification ? getTeamAnalysisBundle(verification) : null;
   const slotText = `${team.group}조 · ${team.position}번 자리`;
-  const keyPlayers = verification?.notablePlayers.slice(0, 3).map((player) => player.playerName).join(", ");
-  const notablePlayers = verification?.notablePlayers.slice(3, 5).map((player) => player.playerName).join(", ");
+  const keyPlayers = verification?.notablePlayers.slice(0, 3).map((player) => sanitizeDisplayText(player.playerName, "선수명 확인 필요")).join(", ");
+  const notablePlayers = verification?.notablePlayers.slice(3, 5).map((player) => sanitizeDisplayText(player.playerName, "선수명 확인 필요")).join(", ");
   const tacticalKeywords = verification?.tactics.strengths.slice(0, 3).join(", ");
   const strengths = verification?.tactics.strengths.slice(0, 2).join(", ");
   const weaknesses = verification?.tactics.weaknesses.slice(0, 2).join(", ");
+  const koreaPrediction = analysis?.koreaPrediction;
+  const riskProfile = analysis?.riskProfile;
+  const koreaProbabilityText = koreaPrediction
+    ? team.teamSlug === "korea-republic"
+      ? "대한민국 자체 기준"
+      : `한국 ${koreaPrediction.koreaWinProbability}% / 무 ${koreaPrediction.drawProbability}% / 상대 ${koreaPrediction.opponentWinProbability}%`
+    : "계산 전";
 
   return (
     <Link href={`/teams/${team.teamSlug}`} className="block min-w-0 rounded border border-white/10 bg-white/[0.06] p-4 transition hover:border-trophy/50 hover:bg-white/[0.09] focus:outline-none focus:ring-2 focus:ring-trophy/60">
@@ -36,6 +46,10 @@ export default function TeamInfoCard({ team }: { team: TeamRef }) {
         <InfoRow label="전술 키워드" value={tacticalKeywords ?? "추가 수집 필요"} />
         <InfoRow label="강점" value={strengths ?? "추가 수집 필요"} />
         <InfoRow label="약점" value={weaknesses ?? "추가 수집 필요"} />
+        <InfoRow label="한국 상대" value={koreaProbabilityText} />
+        <InfoRow label="카드 리스크" value={riskProfile?.cardRisk.teamCardRiskLevel ?? "확인 필요"} />
+        <InfoRow label="부상 리스크" value={riskProfile?.injuryRisk.keyPlayerInjuryRisk ?? "확인 필요"} />
+        <InfoRow label="체력 리스크" value={riskProfile?.fitnessRisk.fatigueLevel ?? "확인 필요"} />
         <InfoRow label="전력 지표" value={verification?.powerIndex ?? "확인 필요"} />
         <InfoRow label="출처" value={`${verification?.sources.length ?? 0}개`} />
         <InfoRow label="업데이트" value={verification?.lastUpdated ?? "업데이트 필요"} />
@@ -46,6 +60,7 @@ export default function TeamInfoCard({ team }: { team: TeamRef }) {
         <Badge tone={verification?.dataStatus.squad ?? "확인 필요"}>명단 {verification?.dataStatus.squad ?? "확인 필요"}</Badge>
         <Badge tone={verification?.dataStatus.formation ?? "확인 필요"}>포메이션 {verification?.dataStatus.formation ?? "확인 필요"}</Badge>
         <Badge tone={verification?.dataStatus.tactics ?? "확인 필요"}>전술 {verification?.dataStatus.tactics ?? "확인 필요"}</Badge>
+        <Badge tone="AI 예측">한국 상대 승률</Badge>
       </div>
       <p className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-3 text-xs font-semibold leading-5 text-trophy">
         상세 페이지 보기

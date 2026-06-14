@@ -1,5 +1,6 @@
 import Badge from "@/components/Badge";
 import { hasCompleteSource } from "@/lib/teamDetails";
+import { sanitizeDisplayText } from "@/lib/textSanitizer";
 import type { FormationData, FormationPlayer, PlayerPosition } from "@/types/team";
 
 type FormationMarker = {
@@ -57,7 +58,7 @@ function buildMarkers(data: FormationData): FormationMarker[] {
 
       return {
         id: player?.playerId ?? `${data.teamId}-${line.position}-${lineIndex}-${index}`,
-        label: player?.playerName ?? line.position,
+        label: sanitizeDisplayText(player?.playerName, line.position),
         position: line.position,
         x,
         y: line.y,
@@ -140,7 +141,7 @@ function PlayerMarker({ marker }: { marker: FormationMarker }) {
       style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
     >
       <p className="text-[11px] font-black text-trophy">{marker.position}</p>
-      <p className="truncate text-xs font-semibold">{marker.label}</p>
+      <p className="max-w-24 break-words text-xs font-semibold leading-4">{marker.label}</p>
       {marker.role && !marker.isPlaceholder ? <p className="truncate text-[10px] text-white/65">{marker.role}</p> : null}
     </div>
   );

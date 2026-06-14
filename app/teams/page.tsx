@@ -1,4 +1,5 @@
 import Badge from "@/components/Badge";
+import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
 import PlayerRosterVerificationPanel from "@/components/PlayerRosterVerificationPanel";
 import TeamInfoCard from "@/components/TeamInfoCard";
 import { teamVerificationRequirements } from "@/data/teamVerificationData";
@@ -52,6 +53,8 @@ export default function TeamsPage() {
           <Badge tone="추가 수집 필요">경기별 선발 확인 필요</Badge>
         </div>
       </section>
+
+      <FootballDataRefreshPanel />
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <h2 className="text-xl font-black text-white">국가 상세 페이지 공통 상태</h2>

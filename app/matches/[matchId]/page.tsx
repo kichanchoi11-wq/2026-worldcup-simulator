@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Badge from "@/components/Badge";
 import FormationBoard from "@/components/FormationBoard";
 import { createMatchPageData, getAllMatchIds, getMatchDetailById } from "@/data/matchDetails";
+import { createMatchReview, createMatchReviewPlaceholder } from "@/lib/matchReviewService";
+import { sanitizeDisplayText } from "@/lib/textSanitizer";
 import type { SourceMeta } from "@/types/football";
 import type { MatchPlayerStatus } from "@/types/match";
 
@@ -18,6 +20,8 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
   }
 
   const pageData = createMatchPageData(match);
+  const review = createMatchReview(pageData);
+  const reviewPlaceholder = createMatchReviewPlaceholder(match);
   const score =
     match.score.home === null || match.score.away === null
       ? "경기 전"
@@ -100,6 +104,57 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         </div>
       </section>
 
+      <section className="rounded border border-trophy/30 bg-trophy/10 p-5 shadow-panel">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={review ? "success" : "warning"}>{review ? "경기 리뷰" : "경기 전 프리뷰"}</Badge>
+          <Badge tone="분석 참고">AI 예측과 실제 결과 분리</Badge>
+        </div>
+        <h2 className="mt-3 text-xl font-black text-white">{review ? "끝난 경기 리뷰" : reviewPlaceholder.title}</h2>
+        {review ? (
+          <div className="mt-4 space-y-4">
+            <p className="rounded border border-white/10 bg-pitch-900/80 p-4 text-sm leading-6 text-amber-50/80">
+              {review.matchSummary}
+            </p>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <StatusCard label="최종 스코어" value={`${review.homeTeamName} ${review.finalScore.home} - ${review.finalScore.away} ${review.awayTeamName}`} />
+              <StatusCard label="AI 예상 승자" value={review.predictionComparison.predictedWinner ?? "확인 필요"} />
+              <StatusCard label="실제 승자" value={review.predictionComparison.actualWinner ?? "확인 필요"} />
+              <StatusCard
+                label="예측 적중"
+                value={review.predictionComparison.wasPredictionCorrect === null ? "비교 보류" : review.predictionComparison.wasPredictionCorrect ? "적중" : "불일치"}
+                tone={review.predictionComparison.wasPredictionCorrect ? "success" : "warning"}
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <ReviewList title="주요 장면" items={review.keyMoments} />
+              <ReviewList title="포메이션 변화" items={review.formationChanges} />
+              <ReviewList title="교체 영향" items={review.substitutionImpact} />
+              <ReviewList title="선수 하이라이트" items={review.playerHighlights} />
+              <ReviewList title="카드·부상 영향" items={review.cardAndInjuryImpact} />
+              <ReviewList title="체력 영향" items={review.fatigueImpact} />
+              <ReviewList title="다음 경기 영향" items={review.nextMatchImpact} />
+              <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
+                <h3 className="font-black text-white">예측 비교 메모</h3>
+                <p className="mt-3 text-sm leading-6 text-white/68">{review.predictionComparison.notes}</p>
+                {review.koreaPerspectiveReview ? <p className="mt-3 text-sm leading-6 text-red-50/80">{review.koreaPerspectiveReview}</p> : null}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <p className="rounded border border-white/10 bg-pitch-900/80 p-4 text-sm leading-6 text-amber-50/80">
+              {reviewPlaceholder.body}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <StatusCard label="예상 명단" value={`${pageData.expectedPlayers.length}명 연결`} />
+              <StatusCard label="출전 금지" value={`${pageData.suspendedPlayers.length}명`} />
+              <StatusCard label="카드 확인 대상" value={`${pageData.cardRiskPlayers.length}명`} />
+              <StatusCard label="부상 확인 대상" value={`${pageData.injuryPlayers.length}명`} />
+            </div>
+          </div>
+        )}
+      </section>
+
       {pageData.koreaAnalysis.applies ? (
         <section className="rounded border border-red-300/25 bg-red-400/10 p-5 shadow-panel">
           <h2 className="text-xl font-black text-white">대한민국 관련 경기 분석</h2>
@@ -124,7 +179,7 @@ function PlayerStatusGrid({ players }: { players: MatchPlayerStatus[] }) {
         <article key={`${player.matchId}-${player.playerId}`} className="rounded border border-white/10 bg-pitch-900/80 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="font-black text-white">{player.playerName}</h3>
+              <h3 className="font-black text-white">{sanitizeDisplayText(player.playerName, "선수명 확인 필요")}</h3>
               <p className="mt-1 text-sm text-white/55">{player.teamId} · {player.position}</p>
             </div>
             <Badge tone={player.availability}>{player.availability}</Badge>
@@ -137,6 +192,23 @@ function PlayerStatusGrid({ players }: { players: MatchPlayerStatus[] }) {
           <p className="mt-3 text-xs leading-5 text-white/50">{player.notes.join(" ")}</p>
         </article>
       ))}
+    </div>
+  );
+}
+
+function ReviewList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
+      <h3 className="font-black text-white">{title}</h3>
+      {items.length > 0 ? (
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-white/68">
+          {items.map((item) => (
+            <li key={item}>{sanitizeDisplayText(item, "확인 필요")}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-white/50">추가 확인 필요</p>
+      )}
     </div>
   );
 }

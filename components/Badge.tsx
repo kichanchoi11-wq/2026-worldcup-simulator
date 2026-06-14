@@ -19,6 +19,7 @@ const toneClass: Record<string, string> = {
   "확인 필요": "border-zinc-300/40 bg-zinc-400/15 text-zinc-100",
   "추가 수집 필요": "border-amber-300/50 bg-amber-400/15 text-amber-50",
   "분석 참고": "border-cyan-300/50 bg-cyan-400/15 text-cyan-50",
+  "최근 자료 기준 추정": "border-cyan-300/50 bg-cyan-400/15 text-cyan-50",
   "재검증 필요": "border-orange-300/50 bg-orange-400/15 text-orange-50",
   "표시 불가": "border-red-300/50 bg-red-400/15 text-red-50",
   "표시 금지": "border-red-300/50 bg-red-400/15 text-red-50",

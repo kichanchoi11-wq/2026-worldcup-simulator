@@ -1,6 +1,7 @@
 import { teamRosterExpansions } from "@/data/teamRosterExpansions";
 import { teamScoutingProfiles } from "@/data/teamScoutingProfiles";
 import { worldCupGroupSlots } from "@/data/worldCupGroups";
+import { sanitizeDisplayText } from "@/lib/textSanitizer";
 import type { SourceMeta } from "@/types/football";
 import type {
   CoachData,
@@ -30,11 +31,12 @@ function sourceMeta(source: Partial<SourceMeta> = {}): SourceMeta {
 }
 
 function playerId(teamId: string, name: string) {
-  return `${teamId}-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+  const safeName = sanitizeDisplayText(name, "player");
+  return `${teamId}-${safeName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
 }
 
 function normalizePlayerName(name: string) {
-  return name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return sanitizeDisplayText(name, "player").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function formationCoordinates(players: PlayerData[]): FormationPlayer[] {
@@ -223,14 +225,15 @@ export const teamVerificationData: TeamVerificationData[] = worldCupGroupSlots.m
   const sourceBackedPlayers: PlayerData[] = expandedRoster.map((rosterPlayer) => {
     const scoutPlayer = scoutPlayerByName.get(normalizePlayerName(rosterPlayer.name));
     const role = scoutPlayer?.role ?? "예상 명단";
+    const safePlayerName = sanitizeDisplayText(rosterPlayer.name, "선수명 확인 필요");
 
     return {
-      playerId: playerId(teamId, rosterPlayer.name),
+      playerId: playerId(teamId, safePlayerName),
       teamId,
       teamName,
-      playerName: rosterPlayer.name,
+      playerName: safePlayerName,
       position: rosterPlayer.position,
-      club: rosterPlayer.club,
+      club: sanitizeDisplayText(rosterPlayer.club, "소속팀 확인 필요"),
       role,
       squadStatus: "최근 경기 엔트리",
       availability: "출전 가능",
@@ -247,12 +250,12 @@ export const teamVerificationData: TeamVerificationData[] = worldCupGroupSlots.m
   const supplementalScoutPlayers: PlayerData[] = profile.players
     .filter((profilePlayer) => !sourceBackedPlayers.some((player) => normalizePlayerName(player.playerName) === normalizePlayerName(profilePlayer.name)))
     .map((profilePlayer) => ({
-      playerId: playerId(teamId, profilePlayer.name),
+      playerId: playerId(teamId, sanitizeDisplayText(profilePlayer.name, "선수명 확인 필요")),
       teamId,
       teamName,
-      playerName: profilePlayer.name,
+      playerName: sanitizeDisplayText(profilePlayer.name, "선수명 확인 필요"),
       position: profilePlayer.position,
-      club: profilePlayer.club,
+      club: sanitizeDisplayText(profilePlayer.club, "소속팀 확인 필요"),
       role: profilePlayer.role,
       squadStatus: "예상",
       availability: "출전 가능",

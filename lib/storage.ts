@@ -7,6 +7,14 @@ export const storageKeys = {
   savedScenarioList: "savedScenarioList",
   apiMatchesData: "apiMatchesData",
   apiStandingsData: "apiStandingsData",
+  teamTacticsData: "worldCupTeamTactics",
+  teamFormationsData: "worldCupTeamFormations",
+  teamRiskProfilesData: "worldCupTeamRiskProfiles",
+  koreaVsTeamPredictionsData: "koreaVsTeamPredictions",
+  matchReviewsData: "worldCupMatchReviews",
+  footballRefreshSnapshotData: "worldCupFootballRefreshSnapshot",
+  lastAutoUpdateData: "worldCupLastAutoUpdate",
+  lastManualRefreshData: "worldCupLastManualRefresh",
   adminManualGroupEntries: "adminManualGroupEntries",
   dataMigrationVersion: "dataMigrationVersion"
 } as const;
@@ -73,7 +81,15 @@ const migratableStorageKeys: StorageKey[] = [
   storageKeys.fullTournamentPredictionData,
   storageKeys.userSimulationData,
   storageKeys.scenarioCalculatorData,
-  storageKeys.savedScenarioList
+  storageKeys.savedScenarioList,
+  storageKeys.teamTacticsData,
+  storageKeys.teamFormationsData,
+  storageKeys.teamRiskProfilesData,
+  storageKeys.koreaVsTeamPredictionsData,
+  storageKeys.matchReviewsData,
+  storageKeys.footballRefreshSnapshotData,
+  storageKeys.lastAutoUpdateData,
+  storageKeys.lastManualRefreshData
 ];
 
 function containsTemporarySlotName(value: unknown) {

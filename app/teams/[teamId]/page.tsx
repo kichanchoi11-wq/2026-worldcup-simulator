@@ -2,9 +2,13 @@ import { notFound } from "next/navigation";
 import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import FormationBoard from "@/components/FormationBoard";
+import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
 import TeamPlayerRoster from "@/components/TeamPlayerRoster";
+import { getTeamAnalysisBundle } from "@/lib/teamAnalysis";
 import { getAllTeamIds, getTeamDetailRecord, hasCompleteSource } from "@/lib/teamDetails";
+import { sanitizeDisplayText } from "@/lib/textSanitizer";
 import type { SourceMeta } from "@/types/football";
+import type { EvidenceConfidence, PlayerRiskItem } from "@/types/team";
 
 export function generateStaticParams() {
   return getAllTeamIds().map((teamId) => ({ teamId }));
@@ -19,9 +23,15 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
   }
 
   const { team, detail } = record;
+  const analysis = getTeamAnalysisBundle(detail);
+  const { coachTacticalProfile, formationProfile, koreaPrediction, riskProfile } = analysis;
   const verifiedSourceCount = detail.sources.filter(hasCompleteSource).length;
-  const keyPlayers = detail.players.slice(0, 3).map((player) => player.playerName).join(", ");
+  const keyPlayers = detail.players.slice(0, 3).map((player) => sanitizeDisplayText(player.playerName, "선수명 확인 필요")).join(", ");
   const recentAchievements = detail.recentAchievements?.join(" · ") || "추가 수집 필요";
+  const probabilitySummary =
+    team.teamSlug === "korea-republic"
+      ? "대한민국 자체 기준 페이지"
+      : `한국 ${koreaPrediction.koreaWinProbability}% · 무승부 ${koreaPrediction.drawProbability}% · ${detail.teamName} ${koreaPrediction.opponentWinProbability}%`;
 
   return (
     <div className="space-y-8">
@@ -70,6 +80,8 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
         </div>
       </section>
 
+      <FootballDataRefreshPanel size="compact" />
+
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <h2 className="text-xl font-black text-white">기본 정보와 감독</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -89,6 +101,101 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
         )}
       </section>
 
+      <section className="rounded border border-sky-300/25 bg-sky-400/10 p-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black text-white">감독 전술 상세 보강</h2>
+            <p className="mt-2 text-sm leading-6 text-sky-50/75">
+              {coachTacticalProfile.coachName ?? "감독명 확인 필요"} 체제의 최근 전술 흐름을 기존 스쿼드·포메이션·전술 데이터에서 재구성했습니다.
+            </p>
+          </div>
+          <Badge tone={evidenceTone(coachTacticalProfile.confidence)}>{coachTacticalProfile.confidence}</Badge>
+        </div>
+        <p className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4 text-sm leading-6 text-white/70">
+          {coachTacticalProfile.tacticalIdentity}
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatusCard label="선호 포메이션" value={coachTacticalProfile.preferredFormations.join(" / ") || "확인 필요"} />
+          <StatusCard label="최근 포메이션" value={coachTacticalProfile.recentFormations.join(" / ") || "확인 필요"} />
+          <StatusCard label="경기 중 조정" value={coachTacticalProfile.inGameAdjustmentPattern} />
+          <StatusCard label="교체 패턴" value={coachTacticalProfile.substitutionPattern} />
+          <StatusCard label="공격 접근" value={coachTacticalProfile.attackingApproach} />
+          <StatusCard label="수비 접근" value={coachTacticalProfile.defensiveApproach} />
+          <StatusCard label="압박 접근" value={coachTacticalProfile.pressingApproach} />
+          <StatusCard label="빌드업 접근" value={coachTacticalProfile.buildUpApproach} />
+          <StatusCard label="전환 접근" value={coachTacticalProfile.transitionApproach} />
+          <StatusCard label="세트피스 접근" value={coachTacticalProfile.setPieceApproach} />
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <ListPanel title="전술 강점" items={coachTacticalProfile.tacticalStrengths} />
+          <ListPanel title="전술 약점" items={coachTacticalProfile.tacticalWeaknesses} />
+        </div>
+      </section>
+
+      <section className="rounded border border-emerald-300/25 bg-emerald-400/10 p-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black text-white">최근/예상 포메이션 근거</h2>
+            <p className="mt-2 text-sm leading-6 text-emerald-50/75">
+              단일 고정 포메이션이 아니라 최근 사용형, 예상형, 대체 가능형을 분리했습니다.
+            </p>
+          </div>
+          <Badge tone={evidenceTone(formationProfile.confidence)}>{formationProfile.confidence}</Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatusCard label="최근 사용형" value={formationProfile.recentFormation ?? "확인 필요"} />
+          <StatusCard label="예상 사용형" value={formationProfile.expectedFormation ?? "확인 필요"} />
+          <StatusCard label="대체 포메이션" value={formationProfile.alternativeFormations.join(" / ") || "확인 필요"} />
+          <StatusCard label="업데이트" value={formationProfile.lastUpdated} />
+          <StatusCard label="공격 시 형태" value={formationProfile.tacticalShapeInPossession ?? "추가 확인 필요"} />
+          <StatusCard label="수비 시 형태" value={formationProfile.tacticalShapeOutOfPossession ?? "추가 확인 필요"} />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <ListPanel title="포메이션 메모" items={formationProfile.formationNotes} />
+          <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
+            <h3 className="font-black text-white">경기 기반 근거</h3>
+            <div className="mt-3 space-y-3">
+              {formationProfile.matchBasedFormations.map((item) => (
+                <div key={`${item.matchName}-${item.formation}`} className="rounded border border-white/10 bg-white/[0.04] p-3 text-sm text-white/65">
+                  <p className="font-black text-white">{item.matchName}</p>
+                  <p className="mt-1">포메이션: {item.formation}</p>
+                  <p className="mt-1">출처: {item.sourceName}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded border border-trophy/30 bg-trophy/10 p-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black text-white">대한민국 상대 승률 예상</h2>
+            <p className="mt-2 text-sm leading-6 text-amber-50/75">{probabilitySummary}</p>
+          </div>
+          <Badge tone={evidenceTone(koreaPrediction.confidence)}>{koreaPrediction.confidence}</Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <ProbabilityCard label="한국 승" value={koreaPrediction.koreaWinProbability} />
+          <ProbabilityCard label="무승부" value={koreaPrediction.drawProbability} />
+          <ProbabilityCard label={`${detail.teamName} 승`} value={koreaPrediction.opponentWinProbability} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatusCard label="예상 스코어" value={`한국 ${koreaPrediction.expectedScore.korea} - ${koreaPrediction.expectedScore.opponent} ${detail.teamName}`} />
+          <StatusCard label="연장/승부차기 한국 승률" value={`${koreaPrediction.knockoutWinnerProbability.korea}%`} />
+          <StatusCard label="상대 토너먼트 승률" value={`${koreaPrediction.knockoutWinnerProbability.opponent}%`} />
+          <StatusCard label="생성일" value={koreaPrediction.generatedAt} />
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <ListPanel title="한국의 승리 요인" items={koreaPrediction.keyFactorsForKorea} />
+          <ListPanel title="한국의 위험 요인" items={koreaPrediction.keyRisksForKorea} />
+          <ListPanel title="상대 강점" items={koreaPrediction.opponentStrengths} />
+          <ListPanel title="상대 약점" items={koreaPrediction.opponentWeaknesses} />
+          <ListPanel title="한국 전술 조언" items={koreaPrediction.tacticalAdviceForKorea} />
+          <ListPanel title="불확실성" items={koreaPrediction.uncertaintyFactors} />
+        </div>
+      </section>
+
       <FormationBoard data={detail.formation} />
 
       <TeamPlayerRoster players={detail.players} />
@@ -104,7 +211,9 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-black text-white">{player.playerName}</h3>
-                    <p className="mt-1 text-sm text-white/55">{player.position} · {player.club ?? "소속팀 확인 필요"}</p>
+                    <p className="mt-1 text-sm text-white/55">
+                      {player.position} · {sanitizeDisplayText(player.club, "소속팀 확인 필요")}
+                    </p>
                   </div>
                   <Badge tone={player.koreaRisk === "높음" ? "경고 누적 위험" : "분석 참고"}>한국 위험도 {player.koreaRisk}</Badge>
                 </div>
@@ -159,12 +268,25 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <h2 className="text-xl font-black text-white">부상/징계/카드/체력 리스크</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatusCard label="카드 위험" value={riskProfile.cardRisk.summary} tone={riskLevelTone(riskProfile.cardRisk.teamCardRiskLevel)} />
+          <StatusCard label="부상 위험" value={riskProfile.injuryRisk.summary} tone={riskLevelTone(riskProfile.injuryRisk.keyPlayerInjuryRisk)} />
+          <StatusCard label="징계 위험" value={riskProfile.suspensionRisk.summary} tone="warning" />
+          <StatusCard label="체력 위험" value={riskProfile.fitnessRisk.summary} tone={riskLevelTone(riskProfile.fitnessRisk.fatigueLevel)} />
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <RiskList title="옐로카드 확인 대상" items={riskProfile.cardRisk.yellowCardRiskPlayers} />
+          <RiskList title="부상/컨디션 확인 대상" items={[...riskProfile.injuryRisk.injuredPlayers, ...riskProfile.injuryRisk.doubtfulPlayers]} />
+          <RiskList title="징계 확인 대상" items={[...riskProfile.suspensionRisk.suspendedPlayers, ...riskProfile.suspensionRisk.suspensionRiskPlayers]} />
+          <RiskList title="체력 과부하 확인 대상" items={riskProfile.fitnessRisk.overloadedPlayers} />
+        </div>
+        <ListPanel title="이동·일정 메모" items={riskProfile.fitnessRisk.travelOrScheduleNotes} />
         {detail.playerStatuses.length > 0 ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {detail.playerStatuses.map((player) => (
               <StatusCard
                 key={player.playerId}
-                label={player.playerName}
+                label={sanitizeDisplayText(player.playerName, "선수명 확인 필요")}
                 value={`부상 ${player.injuryStatus} · 징계 ${player.suspensionStatus} · 체력 ${player.fatigueRisk}`}
                 tone={player.injuryStatus === "정상" && player.suspensionStatus === "없음" ? "neutral" : "추가 수집 필요"}
               />
@@ -187,6 +309,70 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
       </section>
 
       <SourceList sources={detail.sources} />
+    </div>
+  );
+}
+
+function evidenceTone(confidence: EvidenceConfidence): Parameters<typeof Badge>[0]["tone"] {
+  if (confidence === "공식 확인" || confidence === "신뢰도 높음") {
+    return "success";
+  }
+
+  if (confidence === "참고 자료" || confidence === "최근 자료 기준 추정") {
+    return "분석 참고";
+  }
+
+  return "warning";
+}
+
+function riskLevelTone(level: string): Parameters<typeof Badge>[0]["tone"] {
+  if (level === "낮음" || level === "출전 가능") {
+    return "success";
+  }
+
+  if (level === "높음" || level === "결장" || level === "징계 결장") {
+    return "danger";
+  }
+
+  return "warning";
+}
+
+function ProbabilityCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-black text-white">{label}</p>
+        <p className="text-2xl font-black text-trophy">{value}%</p>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded bg-white/10">
+        <div className="h-full rounded bg-trophy" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function RiskList({ title, items }: { title: string; items: PlayerRiskItem[] }) {
+  return (
+    <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
+      <h3 className="font-black text-white">{title}</h3>
+      {items.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          {items.slice(0, 5).map((item) => (
+            <div key={`${item.playerName}-${item.riskType}`} className="rounded border border-white/10 bg-white/[0.04] p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="break-words text-sm font-black text-white">{sanitizeDisplayText(item.playerName, "선수명 확인 필요")}</p>
+                  <p className="mt-1 text-xs text-white/55">{item.position} · {item.riskType}</p>
+                </div>
+                <Badge tone={riskLevelTone(item.status)}>{item.status}</Badge>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-white/58">{item.description}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-white/50">현재 표시할 확정 항목 없음</p>
+      )}
     </div>
   );
 }

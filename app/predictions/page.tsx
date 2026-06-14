@@ -1,4 +1,5 @@
 import Badge from "@/components/Badge";
+import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
 import FullTournamentPredictionPanel from "@/components/FullTournamentPredictionPanel";
 import { getBaseGroups } from "@/lib/scenario";
 
@@ -43,6 +44,8 @@ export default function PredictionsPage() {
           </div>
         ))}
       </section>
+
+      <FootballDataRefreshPanel size="compact" />
 
       <FullTournamentPredictionPanel groups={groups} />
     </div>

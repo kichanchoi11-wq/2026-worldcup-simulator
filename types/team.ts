@@ -1,5 +1,8 @@
 import type { DisplayBadge, SourceMeta, VerificationConfidence } from "@/types/football";
 
+export type DataSource = SourceMeta;
+export type EvidenceConfidence = "공식 확인" | "신뢰도 높음" | "참고 자료" | "최근 자료 기준 추정" | "추가 확인 필요";
+
 export type VerificationStatus =
   | "공식 확인"
   | "신뢰도 높음"
@@ -166,4 +169,120 @@ export interface VerificationRequirement {
   status: VerificationStatus;
   description: string;
   requiredSources: string[];
+}
+
+export interface CoachTacticalProfile {
+  teamId: string;
+  teamName: string;
+  coachName: string | null;
+  coachNationality: string | null;
+  appointedDate: string | null;
+  preferredFormations: string[];
+  recentFormations: string[];
+  tacticalIdentity: string;
+  attackingApproach: string;
+  defensiveApproach: string;
+  pressingApproach: string;
+  buildUpApproach: string;
+  transitionApproach: string;
+  setPieceApproach: string;
+  inGameAdjustmentPattern: string;
+  substitutionPattern: string;
+  tacticalStrengths: string[];
+  tacticalWeaknesses: string[];
+  confidence: EvidenceConfidence;
+  sources: DataSource[];
+  lastUpdated: string;
+}
+
+export interface TeamFormationProfile {
+  teamId: string;
+  teamName: string;
+  recentFormation: string | null;
+  expectedFormation: string | null;
+  alternativeFormations: string[];
+  matchBasedFormations: {
+    matchName: string;
+    date: string | null;
+    opponent: string | null;
+    formation: string;
+    result?: string | null;
+    sourceName: string;
+    sourceUrl: string;
+  }[];
+  formationNotes: string[];
+  tacticalShapeInPossession: string | null;
+  tacticalShapeOutOfPossession: string | null;
+  confidence: EvidenceConfidence;
+  sources: DataSource[];
+  lastUpdated: string;
+}
+
+export interface PlayerRiskItem {
+  playerName: string;
+  position: PlayerPosition;
+  club?: string | null;
+  riskType: string;
+  description: string;
+  status: "출전 가능" | "출전 불투명" | "결장" | "징계 결장" | "경고 누적 위험" | "추가 확인 필요";
+  sourceName: string;
+  sourceUrl: string;
+  lastUpdated: string;
+}
+
+export interface TeamRiskProfile {
+  teamId: string;
+  teamName: string;
+  cardRisk: {
+    summary: string;
+    yellowCardRiskPlayers: PlayerRiskItem[];
+    redCardRiskPlayers: PlayerRiskItem[];
+    teamCardRiskLevel: "낮음" | "보통" | "높음" | "추가 확인 필요";
+  };
+  injuryRisk: {
+    summary: string;
+    injuredPlayers: PlayerRiskItem[];
+    doubtfulPlayers: PlayerRiskItem[];
+    keyPlayerInjuryRisk: "낮음" | "보통" | "높음" | "추가 확인 필요";
+  };
+  suspensionRisk: {
+    summary: string;
+    suspendedPlayers: PlayerRiskItem[];
+    suspensionRiskPlayers: PlayerRiskItem[];
+  };
+  fitnessRisk: {
+    summary: string;
+    restDays: number | null;
+    fatigueLevel: "낮음" | "보통" | "높음" | "추가 확인 필요";
+    overloadedPlayers: PlayerRiskItem[];
+    travelOrScheduleNotes: string[];
+  };
+  confidence: EvidenceConfidence;
+  sources: DataSource[];
+  lastUpdated: string;
+}
+
+export interface KoreaVsTeamPrediction {
+  opponentTeamId: string;
+  opponentTeamName: string;
+  koreaWinProbability: number;
+  drawProbability: number;
+  opponentWinProbability: number;
+  expectedScore: {
+    korea: number;
+    opponent: number;
+  };
+  knockoutWinnerProbability: {
+    korea: number;
+    opponent: number;
+  };
+  keyFactorsForKorea: string[];
+  keyRisksForKorea: string[];
+  opponentStrengths: string[];
+  opponentWeaknesses: string[];
+  tacticalAdviceForKorea: string[];
+  uncertaintyFactors: string[];
+  confidence: EvidenceConfidence;
+  generatedAt: string;
+  sources: DataSource[];
 }

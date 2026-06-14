@@ -3,11 +3,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/Badge";
+import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
 import { matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
+import { getAdvancedTeamDataAudit, getBrokenPlayerNameAudit } from "@/lib/teamAnalysis";
 import { validateGroupStageForTournament } from "@/lib/bracket";
 import { getGroupDataAudit } from "@/lib/scenario";
-import { readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
+import { migrateStoredFootballData, readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballApiEnvelope, FootballMatch, StandingRow, WorldCupGroupSlot } from "@/types/football";
 import type { FullTournamentPrediction, GroupSimulationData, ScenarioCalculatorData } from "@/types/simulation";
 
@@ -61,6 +63,7 @@ export default function AdminReviewPanel() {
   const [apiMessage, setApiMessage] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [teamRefreshMessage, setTeamRefreshMessage] = useState<string | null>(null);
+  const [adminToolMessage, setAdminToolMessage] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState<ManualGroupEntry>(emptyManualEntry);
   const [storageSnapshot, setStorageSnapshot] = useState<AdminStorageSnapshot>(emptyStorageSnapshot);
 
@@ -105,6 +108,8 @@ export default function AdminReviewPanel() {
     missingDates: matchDetails.filter((match) => !match.dateTime).length,
     missingStadiums: matchDetails.filter((match) => !match.stadium).length
   };
+  const advancedAudit = getAdvancedTeamDataAudit();
+  const brokenNameAudit = getBrokenPlayerNameAudit();
   const snapshot = {
     aiGroup: storageSnapshot.aiGroup,
     scenario: storageSnapshot.scenario,
@@ -144,6 +149,30 @@ export default function AdminReviewPanel() {
       scope === "single"
         ? "팀별 재수집 요청을 기록했습니다. 현재 선수단/감독/전술 데이터는 정적 코드 데이터라 다음 코드 업데이트 때 반영해야 합니다."
         : "전체 팀 정보 재수집 요청을 기록했습니다. FourFourTwo, FIFA, 축구 데이터 사이트 기준으로 재확인 후 코드 배포가 필요합니다."
+    );
+  }
+
+  function runBrokenNameAudit() {
+    setAdminToolMessage(
+      brokenNameAudit.length === 0
+        ? "깨진 선수명 검사 완료: 현재 표시 단계에서 보정이 필요한 선수명이 없습니다."
+        : `깨진 선수명 검사 완료: ${brokenNameAudit.length}건이 감지되었습니다. 화면 표시 단계에서는 안전한 이름으로 보정합니다.`
+    );
+  }
+
+  function runLocalStorageMigration() {
+    const result = migrateStoredFootballData();
+    setAdminToolMessage(
+      result.migrated
+        ? `localStorage 마이그레이션 완료: ${result.touchedKeys.join(", ")} 항목을 보정했습니다.`
+        : "localStorage 마이그레이션 완료: 추가로 보정할 저장 데이터가 없습니다."
+    );
+    setVersion((current) => current + 1);
+  }
+
+  function runStaleDataCleanupCheck() {
+    setAdminToolMessage(
+      "오래된 데이터 정리 점검 완료: AI 예측, API 경기, 수동 입력 데이터는 분리 저장 중입니다. 삭제는 아래 개별 초기화 버튼으로만 수행합니다."
     );
   }
 
@@ -293,6 +322,50 @@ export default function AdminReviewPanel() {
             </div>
           ))}
         </div>
+      </section>
+
+      <FootballDataRefreshPanel />
+
+      <section className="rounded border border-emerald-300/25 bg-emerald-400/10 p-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-white">전술·리스크 자동 보강 감사</h3>
+            <p className="mt-1 text-sm leading-6 text-emerald-50/75">
+              감독 전술, 포메이션, 카드·부상·징계·체력 프로필, 대한민국 상대 승률, 선수명 보정 상태를 코드 데이터 기준으로 점검합니다.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={runBrokenNameAudit} className="rounded border border-emerald-300/50 bg-emerald-400/15 px-3 py-2 text-sm font-black text-white">
+              깨진 선수 이름 데이터 검사
+            </button>
+            <button type="button" onClick={runLocalStorageMigration} className="rounded border border-sky-300/50 bg-sky-400/15 px-3 py-2 text-sm font-black text-white">
+              localStorage 마이그레이션
+            </button>
+            <button type="button" onClick={runStaleDataCleanupCheck} className="rounded border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-sm font-black text-white">
+              오래된 데이터 정리 점검
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <DebugItem label="감사 대상 팀" value={`${advancedAudit.teamCount}팀`} />
+          <DebugItem label="감독 전술 보강" value={`${advancedAudit.completeTactics}팀`} />
+          <DebugItem label="포메이션 보강" value={`${advancedAudit.completeFormations}팀`} />
+          <DebugItem label="리스크 프로필" value={`${advancedAudit.riskProfiles}팀`} />
+          <DebugItem label="대한민국 상대 승률" value={`${advancedAudit.koreaPredictions}팀`} />
+          <DebugItem label="깨진 선수명 감지" value={`${advancedAudit.brokenNames}건`} />
+        </div>
+        {adminToolMessage ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{adminToolMessage}</p> : null}
+        {brokenNameAudit.length > 0 ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {brokenNameAudit.slice(0, 6).map((item) => (
+              <div key={`${item.teamId}-${item.playerId}`} className="rounded border border-white/10 bg-pitch-900/80 p-3">
+                <p className="text-xs font-semibold text-white/45">{item.teamName}</p>
+                <p className="mt-1 break-words text-sm font-black text-white">{item.safeName}</p>
+                <p className="mt-1 break-words text-xs text-white/50">원본: {item.rawName}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded border border-violet-300/25 bg-violet-400/10 p-5 shadow-panel">

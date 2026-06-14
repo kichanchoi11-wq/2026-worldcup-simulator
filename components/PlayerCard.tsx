@@ -1,13 +1,17 @@
 import Badge from "@/components/Badge";
+import { sanitizeDisplayText } from "@/lib/textSanitizer";
 import type { PlayerData } from "@/types/team";
 
 export default function PlayerCard({ player }: { player: PlayerData }) {
+  const safePlayerName = sanitizeDisplayText(player.playerName, "선수명 확인 필요");
+  const safeClub = player.club ? sanitizeDisplayText(player.club, "소속팀 확인 필요") : "소속팀 확인 필요";
+
   return (
     <article className="rounded border border-white/10 bg-white/[0.06] p-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-black text-white">{player.playerName}</h3>
-          <p className="text-sm text-white/55">{player.position} · {player.club ?? "소속팀 확인 필요"}</p>
+        <div className="min-w-0">
+          <h3 className="break-words font-black text-white">{safePlayerName}</h3>
+          <p className="break-words text-sm text-white/55">{player.position} · {safeClub}</p>
           <p className="mt-1 text-xs font-semibold text-trophy">{player.squadStatus}</p>
         </div>
         <Badge tone={player.availability}>{player.availability}</Badge>

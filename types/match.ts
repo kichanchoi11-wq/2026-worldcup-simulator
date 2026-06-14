@@ -1,5 +1,6 @@
 import type { DataSourceType, SourceMeta } from "@/types/football";
 import type { Availability, FormationData, PlayerPosition } from "@/types/team";
+import type { DataSource, EvidenceConfidence } from "@/types/team";
 
 export interface MatchDetailData {
   matchId: string | number;
@@ -65,4 +66,36 @@ export interface MatchPageData {
     points: string[];
   };
   sources: SourceMeta[];
+}
+
+export interface MatchReview {
+  matchId: string | number;
+  homeTeamName: string;
+  awayTeamName: string;
+  finalScore: {
+    home: number;
+    away: number;
+  };
+  matchSummary: string;
+  keyMoments: string[];
+  tacticalReview: {
+    homeTeam: string;
+    awayTeam: string;
+  };
+  formationChanges: string[];
+  substitutionImpact: string[];
+  playerHighlights: string[];
+  cardAndInjuryImpact: string[];
+  fatigueImpact: string[];
+  predictionComparison: {
+    predictedWinner: string | null;
+    actualWinner: string | null;
+    wasPredictionCorrect: boolean | null;
+    notes: string;
+  };
+  nextMatchImpact: string[];
+  koreaPerspectiveReview?: string | null;
+  confidence: EvidenceConfidence;
+  sources: DataSource[];
+  reviewedAt: string;
 }
