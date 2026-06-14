@@ -29,12 +29,12 @@ export default function Header() {
             API 키는 서버 Route에서만 사용
           </div>
         </div>
-        <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="주 메뉴">
+        <nav className="flex flex-wrap gap-2 pb-1" aria-label="주 메뉴">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="shrink-0 rounded border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white/82 transition hover:border-trophy/50 hover:bg-trophy/15 hover:text-white"
+              className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white/82 transition hover:border-trophy/50 hover:bg-trophy/15 hover:text-white"
             >
               {item.label}
             </Link>
