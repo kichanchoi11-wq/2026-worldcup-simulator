@@ -1,5 +1,5 @@
 import type { DataSourceType } from "@/types/football";
-import type { BracketMatch, BracketTeam } from "@/types/bracket";
+import type { BracketMatch, BracketTeam, TournamentRound } from "@/types/bracket";
 
 export interface PredictedMatch {
   matchId: string;
@@ -62,4 +62,141 @@ export interface TournamentDataSourceOption {
   sourceType: DataSourceType;
   qualifiedTeams: BracketTeam[];
   disabledReason: string | null;
+}
+
+export type PredictionDataConfidence =
+  | "공식 확인"
+  | "신뢰도 높음"
+  | "참고 자료"
+  | "추정"
+  | "확인 필요";
+
+export type PredictionRound = "조별리그" | TournamentRound;
+
+export interface PredictionSourceSummary {
+  sourceName: string;
+  sourceUrl: string | null;
+  lastUpdated: string | null;
+  confidence: PredictionDataConfidence;
+  notes: string | null;
+}
+
+export interface PredictionDataCard {
+  id: string;
+  title: string;
+  value: string;
+  confidence: PredictionDataConfidence;
+  description: string;
+  sourceCount: number;
+  items: string[];
+}
+
+export interface PredictionTeamSnapshot {
+  id: string;
+  nameKo: string;
+  teamCode: string | null;
+  group: string | null;
+  seed: string | null;
+  flag: string;
+  flagImageUrl?: string | null;
+  flagAlt?: string | null;
+  sourceType: DataSourceType;
+  strengthScore: number;
+  attackScore: number;
+  defenseScore: number;
+  formScore: number;
+  riskScore: number;
+  confidence: PredictionDataConfidence;
+  coachName: string | null;
+  formation: string | null;
+  keyPlayers: string[];
+  tacticalKeywords: string[];
+  strengths: string[];
+  weaknesses: string[];
+  sourceCount: number;
+  dataGaps: string[];
+}
+
+export interface MatchPrediction {
+  matchId: string | number;
+  round: PredictionRound;
+  group: string | null;
+  label: string;
+  teamA: PredictionTeamSnapshot;
+  teamB: PredictionTeamSnapshot;
+  probabilities: {
+    teamAWin: number;
+    draw: number | null;
+    teamBWin: number;
+  };
+  expectedScore: {
+    teamA: number;
+    teamB: number;
+  };
+  keyFactors: string[];
+  riskFactors: string[];
+  uncertaintyFactors: string[];
+  confidence: PredictionDataConfidence;
+  sources: PredictionSourceSummary[];
+  predictedWinner: PredictionTeamSnapshot | null;
+  bracketSeedNote: string | null;
+}
+
+export interface PredictedTournamentStanding {
+  team: PredictionTeamSnapshot;
+  group: string;
+  rank: number;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  qualificationProbability: number;
+  sourceType: "AI 예측 데이터";
+}
+
+export interface GroupPrediction {
+  group: string;
+  predictedMatches: MatchPrediction[];
+  predictedStandings: PredictedTournamentStanding[];
+  qualifiedTeams: PredictionTeamSnapshot[];
+  thirdPlaceCandidate: PredictionTeamSnapshot | null;
+  notice: string;
+}
+
+export interface TournamentRoundPrediction {
+  round: TournamentRound;
+  matches: MatchPrediction[];
+  notice: string | null;
+}
+
+export interface FullTournamentPrediction {
+  generatedAt: string;
+  source: "AI 시뮬레이션";
+  modelVersion: string;
+  confidence: PredictionDataConfidence;
+  notice: string;
+  refreshStatus: {
+    stable: boolean;
+    message: string;
+  };
+  dataCards: PredictionDataCard[];
+  sourceSummary: PredictionSourceSummary[];
+  teamProfiles: PredictionTeamSnapshot[];
+  groupStage: GroupPrediction[];
+  qualifiedTeams: PredictionTeamSnapshot[];
+  thirdPlaceQualifiers: PredictionTeamSnapshot[];
+  roundOf32: TournamentRoundPrediction;
+  roundOf16: TournamentRoundPrediction;
+  quarterFinals: TournamentRoundPrediction;
+  semiFinals: TournamentRoundPrediction;
+  thirdPlaceMatch: MatchPrediction | null;
+  final: MatchPrediction | null;
+  champion: PredictionTeamSnapshot | null;
+  runnerUp: PredictionTeamSnapshot | null;
+  thirdPlace: PredictionTeamSnapshot | null;
+  uncertaintyFactors: string[];
 }

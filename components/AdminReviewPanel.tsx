@@ -9,7 +9,7 @@ import { validateGroupStageForTournament } from "@/lib/bracket";
 import { getGroupDataAudit } from "@/lib/scenario";
 import { readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballApiEnvelope, FootballMatch, StandingRow, WorldCupGroupSlot } from "@/types/football";
-import type { GroupSimulationData, ScenarioCalculatorData } from "@/types/simulation";
+import type { FullTournamentPrediction, GroupSimulationData, ScenarioCalculatorData } from "@/types/simulation";
 
 type GroupId = WorldCupGroupSlot["groupId"];
 type GroupPosition = WorldCupGroupSlot["position"];
@@ -40,6 +40,7 @@ const emptyManualEntry: ManualGroupEntry = {
 
 type AdminStorageSnapshot = {
   aiGroup: GroupSimulationData | null;
+  fullPrediction: FullTournamentPrediction | null;
   scenario: ScenarioCalculatorData | null;
   apiMatches: FootballMatch[];
   apiStandings: StandingRow[];
@@ -48,6 +49,7 @@ type AdminStorageSnapshot = {
 
 const emptyStorageSnapshot: AdminStorageSnapshot = {
   aiGroup: null,
+  fullPrediction: null,
   scenario: null,
   apiMatches: [],
   apiStandings: [],
@@ -114,6 +116,7 @@ export default function AdminReviewPanel() {
     const timer = window.setTimeout(() => {
       setStorageSnapshot({
         aiGroup: readStorage<GroupSimulationData | null>(storageKeys.aiGroupSimulationData, null),
+        fullPrediction: readStorage<FullTournamentPrediction | null>(storageKeys.fullTournamentPredictionData, null),
         scenario: readStorage<ScenarioCalculatorData | null>(storageKeys.scenarioCalculatorData, null),
         apiMatches: readStorage<FootballMatch[]>(storageKeys.apiMatchesData, []),
         apiStandings: readStorage<StandingRow[]>(storageKeys.apiStandingsData, []),
@@ -126,6 +129,13 @@ export default function AdminReviewPanel() {
 
   function removeKey(key: keyof typeof storageKeys) {
     removeStorageItem(storageKeys[key]);
+    setVersion((current) => current + 1);
+  }
+
+  function resetAiPredictionData() {
+    removeStorageItem(storageKeys.fullTournamentPredictionData);
+    removeStorageItem(storageKeys.aiGroupSimulationData);
+    removeStorageItem(storageKeys.aiTournamentSimulationData);
     setVersion((current) => current + 1);
   }
 
@@ -285,6 +295,31 @@ export default function AdminReviewPanel() {
         </div>
       </section>
 
+      <section className="rounded border border-violet-300/25 bg-violet-400/10 p-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-white">AI 예측 데이터 상태</h3>
+            <p className="mt-1 text-sm text-violet-50/75">
+              조별리그, 32강, 토너먼트, 전체 대회 AI 예측 결과를 실제 경기 데이터와 분리해 저장합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={resetAiPredictionData}
+            className="rounded border border-red-300/50 bg-red-400/15 px-3 py-2 text-sm font-black text-white transition hover:bg-red-400/25"
+          >
+            AI 예측 데이터 전체 초기화
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <DebugItem label="전체 예측 생성 여부" value={storageSnapshot.fullPrediction ? "있음" : "없음"} />
+          <DebugItem label="예측 생성 시각" value={storageSnapshot.fullPrediction?.generatedAt ?? "생성 전"} />
+          <DebugItem label="AI 32강 진출팀 수" value={`${storageSnapshot.fullPrediction?.qualifiedTeams.length ?? snapshot.aiValidation.count}팀`} />
+          <DebugItem label="예상 우승팀" value={storageSnapshot.fullPrediction?.champion?.nameKo ?? "예측 전"} />
+          <DebugItem label="새로고침 안정성" value={storageSnapshot.fullPrediction?.refreshStatus.stable ? "안정" : "버튼 제외"} />
+        </div>
+      </section>
+
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -425,6 +460,9 @@ export default function AdminReviewPanel() {
         <button type="button" onClick={() => removeKey("aiTournamentSimulationData")} className="rounded border border-white/10 bg-white/[0.06] p-4 text-left font-black text-white hover:bg-white/10">
           AI 토너먼트 결과 삭제
         </button>
+        <button type="button" onClick={() => removeKey("fullTournamentPredictionData")} className="rounded border border-violet-300/30 bg-violet-400/10 p-4 text-left font-black text-white hover:bg-violet-400/20">
+          전체 AI 예측 결과 삭제
+        </button>
         <button type="button" onClick={() => removeKey("scenarioCalculatorData")} className="rounded border border-white/10 bg-white/[0.06] p-4 text-left font-black text-white hover:bg-white/10">
           경우의 수 데이터 삭제
         </button>
@@ -438,7 +476,9 @@ export default function AdminReviewPanel() {
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <DebugItem label="관리자 새로고침 횟수" value={`${version}회`} />
           <DebugItem label="AI 조별리그 완료 여부" value={snapshot.aiGroup ? "있음" : "없음"} />
+          <DebugItem label="전체 AI 예측 완료 여부" value={storageSnapshot.fullPrediction ? "있음" : "없음"} />
           <DebugItem label="AI 32강 진출팀 수" value={`${snapshot.aiValidation.count}팀`} />
+          <DebugItem label="전체 AI 브래킷 경기 수" value={`${storageSnapshot.fullPrediction ? 32 : 0}경기`} />
           <DebugItem label="경우의 수 계산기 32강 진출팀 수" value={`${snapshot.scenarioValidation.count}팀`} />
           <DebugItem label="API 실제 경기 수" value={`${storageSnapshot.apiMatches.length}개`} />
           <DebugItem label="API 실제 순위 수" value={`${storageSnapshot.apiStandings.length}개`} />

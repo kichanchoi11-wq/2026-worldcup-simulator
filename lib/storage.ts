@@ -1,6 +1,7 @@
 export const storageKeys = {
   aiGroupSimulationData: "aiGroupSimulationData",
   aiTournamentSimulationData: "aiTournamentSimulationData",
+  fullTournamentPredictionData: "fullTournamentPredictionData",
   userSimulationData: "userSimulationData",
   scenarioCalculatorData: "scenarioCalculatorData",
   savedScenarioList: "savedScenarioList",
@@ -69,6 +70,7 @@ const sourceRequiredKeys = new Set([
 const migratableStorageKeys: StorageKey[] = [
   storageKeys.aiGroupSimulationData,
   storageKeys.aiTournamentSimulationData,
+  storageKeys.fullTournamentPredictionData,
   storageKeys.userSimulationData,
   storageKeys.scenarioCalculatorData,
   storageKeys.savedScenarioList
