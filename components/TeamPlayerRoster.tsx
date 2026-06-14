@@ -12,6 +12,8 @@ export default function TeamPlayerRoster({ players }: { players: PlayerData[] })
   const [positionFilter, setPositionFilter] = useState<PlayerPosition | "전체">("전체");
   const [availabilityFilter, setAvailabilityFilter] = useState<Availability | "전체">("전체");
   const [riskOnly, setRiskOnly] = useState(false);
+  const [keyOnly, setKeyOnly] = useState(false);
+  const [notableOnly, setNotableOnly] = useState(false);
 
   const filteredPlayers = useMemo(
     () =>
@@ -19,9 +21,11 @@ export default function TeamPlayerRoster({ players }: { players: PlayerData[] })
         const matchesPosition = positionFilter === "전체" || player.position === positionFilter;
         const matchesAvailability = availabilityFilter === "전체" || player.availability === availabilityFilter;
         const matchesRisk = !riskOnly || player.injuryStatus !== "정상" || player.suspensionStatus !== "없음";
-        return matchesPosition && matchesAvailability && matchesRisk;
+        const matchesKey = !keyOnly || player.isKeyPlayer;
+        const matchesNotable = !notableOnly || player.isNotablePlayer;
+        return matchesPosition && matchesAvailability && matchesRisk && matchesKey && matchesNotable;
       }),
-    [availabilityFilter, players, positionFilter, riskOnly]
+    [availabilityFilter, keyOnly, notableOnly, players, positionFilter, riskOnly]
   );
 
   return (
@@ -30,13 +34,13 @@ export default function TeamPlayerRoster({ players }: { players: PlayerData[] })
         <div>
           <h2 className="text-xl font-black text-white">선수 명단</h2>
           <p className="mt-2 text-sm leading-6 text-white/62">
-            공식 소집 명단, 각국 축구협회, 공식 경기 리포트 등 신뢰 가능한 출처가 확인된 선수만 표시합니다.
+            공식 소집 명단, 신뢰도 높은 스쿼드 가이드, 경기 데이터 사이트 등에서 확인한 선수단을 표시합니다.
           </p>
         </div>
         <Badge tone={players.length > 0 ? "신뢰도 높음" : "추가 수집 필요"}>{players.length}명 표시</Badge>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
         <label className="space-y-1">
           <span className="text-xs font-semibold text-white/55">포지션</span>
           <select
@@ -65,6 +69,14 @@ export default function TeamPlayerRoster({ players }: { players: PlayerData[] })
           <input type="checkbox" checked={riskOnly} onChange={(event) => setRiskOnly(event.target.checked)} />
           부상/징계/카드 위험만 보기
         </label>
+        <label className="flex items-center gap-2 rounded border border-white/10 bg-pitch-900/70 px-3 py-2 text-sm font-semibold text-white">
+          <input type="checkbox" checked={keyOnly} onChange={(event) => setKeyOnly(event.target.checked)} />
+          핵심 선수만 보기
+        </label>
+        <label className="flex items-center gap-2 rounded border border-white/10 bg-pitch-900/70 px-3 py-2 text-sm font-semibold text-white">
+          <input type="checkbox" checked={notableOnly} onChange={(event) => setNotableOnly(event.target.checked)} />
+          주목 선수만 보기
+        </label>
       </div>
 
       {players.length === 0 ? (
@@ -74,6 +86,11 @@ export default function TeamPlayerRoster({ players }: { players: PlayerData[] })
             선수 명단은 FIFA, 각국 축구협회, 공식 경기 리포트 등 신뢰 가능한 출처가 확인된 경우에만 표시됩니다.
             출처 없는 선수명은 오류 방지를 위해 표시하지 않습니다.
           </p>
+        </div>
+      ) : filteredPlayers.length === 0 ? (
+        <div className="mt-4 rounded border border-amber-300/25 bg-amber-400/10 p-4">
+          <h3 className="font-black text-amber-50">선택한 조건에 맞는 선수가 없습니다.</h3>
+          <p className="mt-2 text-sm leading-6 text-amber-50/78">필터를 줄이면 전체 선수단을 다시 볼 수 있습니다.</p>
         </div>
       ) : (
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">

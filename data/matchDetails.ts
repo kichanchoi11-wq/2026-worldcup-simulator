@@ -135,7 +135,7 @@ function toMatchPlayer(match: MatchDetailData, team: TeamVerificationData, playe
     playerId: player.playerId,
     playerName: player.playerName,
     position: player.position,
-    expectedStarter: index < 3 ? true : null,
+    expectedStarter: index < 11 ? true : null,
     availability: player.availability,
     yellowCards: null,
     redCards: null,
@@ -143,7 +143,8 @@ function toMatchPlayer(match: MatchDetailData, team: TeamVerificationData, playe
     injuryStatus: player.injuryStatus,
     fatigueRisk: "확인 필요",
     notes: [
-      `${player.squadStatus}로 분류된 핵심/주목 선수`,
+      `${player.role} · ${player.squadStatus}로 분류된 예상 명단`,
+      player.notes,
       "경기별 카드·체력·확정 선발은 킥오프 전 공식 발표로 재확인 필요"
     ],
     sourceName: player.sourceName,
@@ -177,7 +178,14 @@ function createExpectedPlayers(match: MatchDetailData, team: TeamVerificationDat
     return [];
   }
 
-  return team.players.slice(0, 5).map((player, index) => toMatchPlayer(match, team, player, index));
+  const expectedLineupIds = team.expectedLineup.players.map((player) => player.playerId);
+  const expectedLineupPlayers = expectedLineupIds
+    .map((playerId) => team.players.find((player) => player.playerId === playerId))
+    .filter((player): player is PlayerData => Boolean(player));
+  const fallbackPlayers = team.players.filter((player) => player.isKeyPlayer || player.isNotablePlayer);
+  const selectedPlayers = expectedLineupPlayers.length > 0 ? expectedLineupPlayers : fallbackPlayers;
+
+  return selectedPlayers.slice(0, 11).map((player, index) => toMatchPlayer(match, team, player, index));
 }
 
 function createKoreaAnalysis(match: MatchDetailData, homeTeam: TeamVerificationData | null, awayTeam: TeamVerificationData | null) {

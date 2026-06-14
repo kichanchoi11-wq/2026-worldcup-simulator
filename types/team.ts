@@ -12,6 +12,7 @@ export type VerificationStatus =
 export type PlayerPosition = "GK" | "DF" | "MF" | "FW" | "확인 필요";
 export type Availability = "출전 가능" | "출전 불투명" | "결장" | "징계 결장" | "출전 금지" | "확인 필요";
 export type SquadStatus = "공식 소집" | "최근 경기 엔트리" | "예상" | "확인 필요" | "제외";
+export type PlayerRole = "핵심 선수" | "주전 후보" | "주목 선수" | "백업" | "예상 명단" | "확인 필요";
 
 export interface PlayerData extends SourceMeta {
   playerId: string;
@@ -20,8 +21,12 @@ export interface PlayerData extends SourceMeta {
   playerName: string;
   position: PlayerPosition;
   club: string | null;
+  role: PlayerRole;
   squadStatus: SquadStatus;
   availability: Availability;
+  isKeyPlayer: boolean;
+  isNotablePlayer: boolean;
+  notes: string;
   yellowCards: number | null;
   redCards: number | null;
   injuryStatus: "정상" | "경미한 부상" | "출전 불투명" | "결장" | "확인 필요";

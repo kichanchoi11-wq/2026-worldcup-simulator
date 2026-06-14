@@ -203,7 +203,7 @@ const seeds: Seed[] = [
     ],
     strengths: ["전방 타깃과 세트피스", "피지컬 경합", "경험 많은 공격진"],
     weaknesses: ["라인 간격이 벌어질 때 속도 대응", "전방 자원 의존도"],
-    squadSourcePath: "bosnia-and-herzegovina-world-cup-2026-squad"
+    squadSourcePath: "bosnia-world-cup-2026-squad"
   },
   {
     teamId: "qatar",
@@ -392,7 +392,7 @@ const seeds: Seed[] = [
     ],
     strengths: ["세트피스 높이", "경합", "활동량"],
     weaknesses: ["빠른 패스 조합 대응", "수비 전환 속도"],
-    squadSourcePath: "australia-world-cup-2026-squad"
+    squadSourcePath: "australia-world-cup-2026"
   },
   {
     teamId: "turkiye",

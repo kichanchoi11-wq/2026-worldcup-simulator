@@ -13,11 +13,13 @@ export default function PlayerCard({ player }: { player: PlayerData }) {
         <Badge tone={player.availability}>{player.availability}</Badge>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
+        <Badge tone={player.isKeyPlayer ? "신뢰도 높음" : player.isNotablePlayer ? "분석 참고" : "neutral"}>{player.role}</Badge>
         <Badge tone={player.suspensionStatus === "없음" ? "neutral" : player.suspensionStatus}>{player.suspensionStatus}</Badge>
         <Badge tone={player.injuryStatus === "정상" ? "neutral" : player.injuryStatus === "확인 필요" ? "확인 필요" : "부상"}>
           {player.injuryStatus}
         </Badge>
       </div>
+      <p className="mt-3 text-sm leading-6 text-white/68">{player.notes}</p>
       <p className="mt-3 text-sm text-white/70">{player.sourceName ?? "출처 확인 필요"}</p>
       <p className="mt-1 text-xs text-white/45">
         {player.lastUpdated ?? "업데이트 날짜 확인 필요"} · {player.sourceLevel ?? player.confidence}

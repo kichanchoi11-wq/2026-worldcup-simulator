@@ -1,3 +1,4 @@
+import { teamRosterExpansions } from "@/data/teamRosterExpansions";
 import { teamScoutingProfiles } from "@/data/teamScoutingProfiles";
 import { worldCupGroupSlots } from "@/data/worldCupGroups";
 import type { SourceMeta } from "@/types/football";
@@ -32,6 +33,10 @@ function playerId(teamId: string, name: string) {
   return `${teamId}-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
 }
 
+function normalizePlayerName(name: string) {
+  return name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function formationCoordinates(players: PlayerData[]): FormationPlayer[] {
   const byPosition = {
     GK: players.filter((player) => player.position === "GK"),
@@ -50,7 +55,7 @@ function formationCoordinates(players: PlayerData[]): FormationPlayer[] {
       position,
       x: ((index + 1) * 100) / (line.length + 1),
       y: lineY[position],
-      role: player.squadStatus,
+      role: player.role,
       status: player.availability
     }));
   });
@@ -213,21 +218,54 @@ export const teamVerificationData: TeamVerificationData[] = worldCupGroupSlots.m
   }
 
   const primarySource = profile.sources[1] ?? profile.sources[0] ?? groupSource;
-  const players: PlayerData[] = profile.players.map((profilePlayer) => ({
-    playerId: playerId(teamId, profilePlayer.name),
-    teamId,
-    teamName,
-    playerName: profilePlayer.name,
-    position: profilePlayer.position,
-    club: profilePlayer.club,
-    squadStatus: profilePlayer.role === "핵심 선수" ? "최근 경기 엔트리" : "예상",
-    availability: "출전 가능",
-    yellowCards: null,
-    redCards: null,
-    injuryStatus: "확인 필요",
-    suspensionStatus: "확인 필요",
-    ...sourceMeta(primarySource)
-  }));
+  const scoutPlayerByName = new Map(profile.players.map((profilePlayer) => [normalizePlayerName(profilePlayer.name), profilePlayer]));
+  const expandedRoster = teamRosterExpansions[teamId] ?? [];
+  const sourceBackedPlayers: PlayerData[] = expandedRoster.map((rosterPlayer) => {
+    const scoutPlayer = scoutPlayerByName.get(normalizePlayerName(rosterPlayer.name));
+    const role = scoutPlayer?.role ?? "예상 명단";
+
+    return {
+      playerId: playerId(teamId, rosterPlayer.name),
+      teamId,
+      teamName,
+      playerName: rosterPlayer.name,
+      position: rosterPlayer.position,
+      club: rosterPlayer.club,
+      role,
+      squadStatus: "최근 경기 엔트리",
+      availability: "출전 가능",
+      isKeyPlayer: role === "핵심 선수",
+      isNotablePlayer: role === "핵심 선수" || role === "주목 선수",
+      notes: scoutPlayer?.note ?? "FourFourTwo 2026 월드컵 최종 26명 명단에서 확인한 선수입니다.",
+      yellowCards: null,
+      redCards: null,
+      injuryStatus: "확인 필요",
+      suspensionStatus: "확인 필요",
+      ...sourceMeta(primarySource)
+    };
+  });
+  const supplementalScoutPlayers: PlayerData[] = profile.players
+    .filter((profilePlayer) => !sourceBackedPlayers.some((player) => normalizePlayerName(player.playerName) === normalizePlayerName(profilePlayer.name)))
+    .map((profilePlayer) => ({
+      playerId: playerId(teamId, profilePlayer.name),
+      teamId,
+      teamName,
+      playerName: profilePlayer.name,
+      position: profilePlayer.position,
+      club: profilePlayer.club,
+      role: profilePlayer.role,
+      squadStatus: "예상",
+      availability: "출전 가능",
+      isKeyPlayer: profilePlayer.role === "핵심 선수",
+      isNotablePlayer: profilePlayer.role === "핵심 선수" || profilePlayer.role === "주목 선수",
+      notes: profilePlayer.note,
+      yellowCards: null,
+      redCards: null,
+      injuryStatus: "확인 필요",
+      suspensionStatus: "확인 필요",
+      ...sourceMeta(primarySource)
+    }));
+  const players = sourceBackedPlayers.length > 0 ? [...sourceBackedPlayers, ...supplementalScoutPlayers] : supplementalScoutPlayers;
 
   const formationPlayers = formationCoordinates(players);
 
@@ -272,17 +310,21 @@ export const teamVerificationData: TeamVerificationData[] = worldCupGroupSlots.m
     ...sourceMeta(primarySource)
   };
 
-  const notablePlayers: NotablePlayerAnalysis[] = players.slice(0, 5).map((profilePlayer, index) => ({
-    playerId: profilePlayer.playerId,
-    playerName: profilePlayer.playerName,
-    position: profilePlayer.position,
-    club: profilePlayer.club,
-    reason: profile.players[index]?.note ?? "핵심 영향력이 확인된 선수입니다.",
-    matchImpact: `${profilePlayer.playerName}의 역할은 ${profile.tacticalKeywords.slice(0, 2).join("·")} 흐름에서 중요합니다.`,
-    koreaRisk: index < 3 ? "높음" : "보통",
-    variables: ["선발 여부", "컨디션", "상대 압박 강도"],
-    ...sourceMeta(primarySource)
-  }));
+  const notablePlayers: NotablePlayerAnalysis[] = profile.players.slice(0, 5).map((profilePlayer, index) => {
+    const playerRecord = players.find((player) => normalizePlayerName(player.playerName) === normalizePlayerName(profilePlayer.name));
+
+    return {
+      playerId: playerRecord?.playerId ?? playerId(teamId, profilePlayer.name),
+      playerName: profilePlayer.name,
+      position: profilePlayer.position,
+      club: playerRecord?.club ?? profilePlayer.club,
+      reason: profilePlayer.note,
+      matchImpact: `${profilePlayer.name}의 역할은 ${profile.tacticalKeywords.slice(0, 2).join("·")} 흐름에서 중요합니다.`,
+      koreaRisk: index < 3 ? "높음" : "보통",
+      variables: ["선발 여부", "컨디션", "상대 압박 강도"],
+      ...sourceMeta(primarySource)
+    };
+  });
 
   const playerStatuses: PlayerStatus[] = players.map((profilePlayer) => ({
     playerId: profilePlayer.playerId,

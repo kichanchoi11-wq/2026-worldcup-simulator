@@ -58,6 +58,7 @@ export default function AdminReviewPanel() {
   const [version, setVersion] = useState(0);
   const [apiMessage, setApiMessage] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [teamRefreshMessage, setTeamRefreshMessage] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState<ManualGroupEntry>(emptyManualEntry);
   const [storageSnapshot, setStorageSnapshot] = useState<AdminStorageSnapshot>(emptyStorageSnapshot);
 
@@ -76,16 +77,26 @@ export default function AdminReviewPanel() {
   }, 0);
   const allTeamSources = teamVerificationData.flatMap((team) => team.sources);
   const uniqueTeamSources = new Set(allTeamSources.map((source) => `${source.sourceName ?? "unknown"}-${source.sourceUrl ?? "unknown"}`));
+  const officialSources = allTeamSources.filter((source) => source.sourceLevel === "공식 확인").length;
   const highTrustSources = allTeamSources.filter((source) => source.sourceLevel === "공식 확인" || source.sourceLevel === "신뢰도 높음").length;
+  const referenceSources = allTeamSources.filter((source) => source.sourceLevel === "참고 자료").length;
+  const pendingSources = allTeamSources.filter((source) => source.sourceLevel === "확인 필요" || !source.sourceLevel).length;
+  const totalPlayers = teamVerificationData.reduce((sum, team) => sum + team.players.length, 0);
   const teamDetailAudit = {
     total: teamVerificationData.length,
+    playerCount: totalPlayers,
+    averagePlayers: teamVerificationData.length === 0 ? 0 : Math.round(totalPlayers / teamVerificationData.length),
+    teamsBelowFullRoster: teamVerificationData.filter((team) => team.players.length < 23).length,
     missingSquads: teamVerificationData.filter((team) => team.players.length === 0).length,
     missingCoaches: teamVerificationData.filter((team) => !team.coach.coachName || !team.coach.sourceName || !team.coach.sourceUrl || !team.coach.lastUpdated).length,
     missingFormations: teamVerificationData.filter((team) => !team.formation.formation || !team.formation.sourceUrl).length,
     missingTactics: teamVerificationData.filter((team) => !team.tactics.summary || !team.tactics.sourceUrl).length,
     fillRate: totalTeamBlocks === 0 ? 0 : Math.round((filledTeamBlocks / totalTeamBlocks) * 100),
     sourceCount: uniqueTeamSources.size,
-    highTrustSources
+    officialSources,
+    highTrustSources,
+    referenceSources,
+    pendingSources
   };
   const matchDetailAudit = {
     total: matchDetails.length,
@@ -116,6 +127,14 @@ export default function AdminReviewPanel() {
   function removeKey(key: keyof typeof storageKeys) {
     removeStorageItem(storageKeys[key]);
     setVersion((current) => current + 1);
+  }
+
+  function requestTeamRefresh(scope: "single" | "all") {
+    setTeamRefreshMessage(
+      scope === "single"
+        ? "팀별 재수집 요청을 기록했습니다. 현재 선수단/감독/전술 데이터는 정적 코드 데이터라 다음 코드 업데이트 때 반영해야 합니다."
+        : "전체 팀 정보 재수집 요청을 기록했습니다. FourFourTwo, FIFA, 축구 데이터 사이트 기준으로 재확인 후 코드 배포가 필요합니다."
+    );
   }
 
   async function refreshApiData() {
@@ -219,13 +238,26 @@ export default function AdminReviewPanel() {
             <Link href="/matches/group-a-3" className="rounded border border-sky-300/50 bg-sky-400/15 px-3 py-2 text-sm font-black text-white">
               경기 상세 미리보기
             </Link>
+            <button type="button" onClick={() => requestTeamRefresh("single")} className="rounded border border-emerald-300/50 bg-emerald-400/15 px-3 py-2 text-sm font-black text-white">
+              팀별 데이터 재수집
+            </button>
+            <button type="button" onClick={() => requestTeamRefresh("all")} className="rounded border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-sm font-black text-white">
+              전체 팀 정보 재수집
+            </button>
           </div>
         </div>
+        {teamRefreshMessage ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{teamRefreshMessage}</p> : null}
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <DebugItem label="국가 상세 페이지 수" value={`${teamDetailAudit.total}개`} />
+          <DebugItem label="총 선수 수" value={`${teamDetailAudit.playerCount}명`} />
+          <DebugItem label="팀 평균 선수 수" value={`${teamDetailAudit.averagePlayers}명`} />
+          <DebugItem label="23명 미만 팀" value={`${teamDetailAudit.teamsBelowFullRoster}개`} />
           <DebugItem label="팀 정보 채움률" value={`${teamDetailAudit.fillRate}%`} />
           <DebugItem label="고유 출처 수" value={`${teamDetailAudit.sourceCount}개`} />
+          <DebugItem label="공식 출처 항목" value={`${teamDetailAudit.officialSources}개`} />
           <DebugItem label="공식/고신뢰 출처 항목" value={`${teamDetailAudit.highTrustSources}개`} />
+          <DebugItem label="참고 자료 출처 항목" value={`${teamDetailAudit.referenceSources}개`} />
+          <DebugItem label="추가 확인 출처 항목" value={`${teamDetailAudit.pendingSources}개`} />
           <DebugItem label="선수 명단 출처 확인 필요" value={`${teamDetailAudit.missingSquads}개`} />
           <DebugItem label="감독 재검증 필요" value={`${teamDetailAudit.missingCoaches}개`} />
           <DebugItem label="포메이션 재검증 필요" value={`${teamDetailAudit.missingFormations}개`} />

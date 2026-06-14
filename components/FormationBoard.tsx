@@ -8,6 +8,8 @@ type FormationMarker = {
   position: PlayerPosition;
   x: number;
   y: number;
+  role?: string | null;
+  status?: string | null;
   isPlaceholder: boolean;
 };
 
@@ -59,6 +61,8 @@ function buildMarkers(data: FormationData): FormationMarker[] {
         position: line.position,
         x,
         y: line.y,
+        role: player?.role,
+        status: player?.status,
         isPlaceholder: !player
       };
     })
@@ -119,15 +123,25 @@ export default function FormationBoard({ data, title = "포메이션 그림" }: 
 }
 
 function PlayerMarker({ marker }: { marker: FormationMarker }) {
+  const isKey = marker.role === "핵심 선수";
+  const hasRisk = marker.status && marker.status !== "출전 가능";
+
   return (
     <div
       className={`absolute min-w-16 -translate-x-1/2 -translate-y-1/2 rounded border px-2 py-1 text-center shadow-panel ${
-        marker.isPlaceholder ? "border-white/15 bg-pitch-950/55 text-white/55" : "border-white/30 bg-pitch-950/90 text-white"
+        marker.isPlaceholder
+          ? "border-white/15 bg-pitch-950/55 text-white/55"
+          : isKey
+            ? "border-trophy/70 bg-trophy/20 text-white"
+            : hasRisk
+              ? "border-amber-300/60 bg-amber-400/20 text-white"
+              : "border-white/30 bg-pitch-950/90 text-white"
       }`}
       style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
     >
       <p className="text-[11px] font-black text-trophy">{marker.position}</p>
       <p className="truncate text-xs font-semibold">{marker.label}</p>
+      {marker.role && !marker.isPlaceholder ? <p className="truncate text-[10px] text-white/65">{marker.role}</p> : null}
     </div>
   );
 }

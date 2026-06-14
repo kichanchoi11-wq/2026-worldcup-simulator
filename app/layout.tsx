@@ -5,7 +5,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "2026 FIFA 월드컵 시뮬레이터",
-  description: "API 실제 데이터, AI 예측, 사용자 입력을 분리하는 한국어 월드컵 시뮬레이션 플랫폼"
+  description: "API 실제 데이터, AI 예측, 사용자 입력을 분리하는 한국어 월드컵 시뮬레이션 플랫폼",
+  icons: {
+    icon: "/favicon.svg"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

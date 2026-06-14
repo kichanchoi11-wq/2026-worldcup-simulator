@@ -77,6 +77,10 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
           <StatusCard label="최근 성과" value={recentAchievements} />
           <StatusCard label="감독명" value={detail.coach.coachName ?? "추가 수집 필요"} tone={detail.coach.coachName ? "신뢰도 높음" : "추가 수집 필요"} />
           <StatusCard label="감독 국적" value={detail.coach.nationality ?? "추가 수집 필요"} />
+          <StatusCard label="부임 시기" value={detail.coach.appointedDate ?? "추가 확인 필요"} />
+          <StatusCard label="선호 포메이션" value={[detail.formation.formation, detail.expectedLineup.formation].filter(Boolean).join(" / ") || "추가 확인 필요"} />
+          <StatusCard label="감독 출처" value={detail.coach.sourceName ?? "출처 확인 필요"} />
+          <StatusCard label="감독 확인일" value={detail.coach.lastUpdated ?? "업데이트 날짜 확인 필요"} />
         </div>
         {detail.coach.tacticalNotes ? (
           <p className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4 text-sm leading-6 text-white/70">{detail.coach.tacticalNotes}</p>
