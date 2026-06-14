@@ -44,7 +44,7 @@ export default function Badge({ children, tone = "neutral" }: BadgeProps) {
   const className = toneClass[tone] ?? toneClass.neutral;
 
   return (
-    <span className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${className}`}>
+    <span className={`inline-flex max-w-full items-center break-words rounded border px-2 py-1 text-left text-xs font-semibold leading-5 ${className}`}>
       {children}
     </span>
   );
