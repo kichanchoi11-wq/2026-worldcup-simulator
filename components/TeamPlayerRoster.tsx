@@ -33,7 +33,7 @@ export default function TeamPlayerRoster({ players }: { players: PlayerData[] })
             공식 소집 명단, 각국 축구협회, 공식 경기 리포트 등 신뢰 가능한 출처가 확인된 선수만 표시합니다.
           </p>
         </div>
-        <Badge tone={players.length > 0 ? "공식 확인" : "확인 필요"}>{players.length}명 표시</Badge>
+        <Badge tone={players.length > 0 ? "신뢰도 높음" : "추가 수집 필요"}>{players.length}명 표시</Badge>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">

@@ -44,7 +44,7 @@ export interface MatchPredictionData {
   drawProbability: number | null;
   awayWinProbability: number | null;
   expectedScore: string | null;
-  confidence: "공식" | "신뢰도 높음" | "예상" | "확인 필요";
+  confidence: "공식" | "공식 확인" | "신뢰도 높음" | "분석 참고" | "예상" | "추가 수집 필요" | "확인 필요";
   variables: string[];
   uncertainty: string;
   lastUpdated: string | null;

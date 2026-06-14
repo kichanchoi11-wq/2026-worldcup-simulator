@@ -1,16 +1,21 @@
 import { allOfficialBracketSlots } from "@/data/fifaBracket";
+import { getTeamVerificationDataById } from "@/data/teamVerificationData";
 import { worldCupGroupSlots } from "@/data/worldCupGroups";
-import type { MatchDetailData, MatchPageData } from "@/types/match";
-import type { FormationData } from "@/types/team";
+import type { SourceMeta } from "@/types/football";
+import type { MatchDetailData, MatchPageData, MatchPlayerStatus } from "@/types/match";
+import type { FormationData, PlayerData, TeamVerificationData } from "@/types/team";
 
 const competition = "2026 FIFA 월드컵";
 const lastUpdated = "2026-06-14";
-const fifaScheduleSource = {
+
+const fifaScheduleSource: SourceMeta = {
   sourceName: "FIFA World Cup 26 match schedule",
   sourceUrl: "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/match-schedule",
   lastUpdated,
   isOfficial: true,
-  confidence: "공식" as const
+  confidence: "공식",
+  sourceLevel: "공식 확인",
+  sourceNotes: "경기 일정과 대진 구조 확인용 공식 출처"
 };
 
 const groupPairings = [
@@ -35,9 +40,8 @@ function emptyFormation(teamId: string | null, teamName: string | null): Formati
     lastUpdated: null,
     isOfficial: false,
     confidence: "확인 필요",
-    notes: [
-      "공식 소집 명단, 최근 경기 라인업, 부상/징계 정보가 검증되지 않아 예상 명단을 표시할 수 없습니다."
-    ]
+    sourceLevel: "확인 필요",
+    notes: ["팀 정보가 연결되면 예상 포메이션과 핵심 선수를 표시합니다."]
   };
 }
 
@@ -108,44 +112,135 @@ export function getGroupMatchDetails(groupId: string) {
   return groupMatchDetails.filter((match) => match.groupId === groupId);
 }
 
+function collectSources(...sourceGroups: Array<SourceMeta[] | undefined>): SourceMeta[] {
+  const seen = new Set<string>();
+  const sources: SourceMeta[] = [];
+
+  for (const source of [fifaScheduleSource, ...sourceGroups.flatMap((group) => group ?? [])]) {
+    const key = `${source.sourceName ?? "unknown"}-${source.sourceUrl ?? "unknown"}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      sources.push(source);
+    }
+  }
+
+  return sources;
+}
+
+function toMatchPlayer(match: MatchDetailData, team: TeamVerificationData, player: PlayerData, index: number): MatchPlayerStatus {
+  return {
+    matchId: match.matchId,
+    teamId: team.teamId,
+    playerId: player.playerId,
+    playerName: player.playerName,
+    position: player.position,
+    expectedStarter: index < 3 ? true : null,
+    availability: player.availability,
+    yellowCards: null,
+    redCards: null,
+    suspensionStatus: player.suspensionStatus,
+    injuryStatus: player.injuryStatus,
+    fatigueRisk: "확인 필요",
+    notes: [
+      `${player.squadStatus}로 분류된 핵심/주목 선수`,
+      "경기별 카드·체력·확정 선발은 킥오프 전 공식 발표로 재확인 필요"
+    ],
+    sourceName: player.sourceName,
+    sourceUrl: player.sourceUrl,
+    lastUpdated: player.lastUpdated,
+    isOfficial: player.isOfficial,
+    confidence: player.confidence,
+    sourceLevel: player.sourceLevel,
+    sourceNotes: player.sourceNotes
+  };
+}
+
+function createPredictionVariables(homeTeam: TeamVerificationData | null, awayTeam: TeamVerificationData | null): string[] {
+  const variables: string[] = [];
+
+  if (homeTeam) {
+    variables.push(`${homeTeam.teamName}: ${homeTeam.tactics.strengths.slice(0, 2).join(", ") || "전술 강점 추가 확인"}`);
+  }
+
+  if (awayTeam) {
+    variables.push(`${awayTeam.teamName}: ${awayTeam.tactics.strengths.slice(0, 2).join(", ") || "전술 강점 추가 확인"}`);
+  }
+
+  variables.push("부상·징계·카드·확정 선발은 경기 직전 공식 발표에 따라 변동");
+
+  return variables;
+}
+
+function createExpectedPlayers(match: MatchDetailData, team: TeamVerificationData | null): MatchPlayerStatus[] {
+  if (!team) {
+    return [];
+  }
+
+  return team.players.slice(0, 5).map((player, index) => toMatchPlayer(match, team, player, index));
+}
+
+function createKoreaAnalysis(match: MatchDetailData, homeTeam: TeamVerificationData | null, awayTeam: TeamVerificationData | null) {
+  const isKoreaHome = match.homeTeamId === "korea-republic";
+  const isKoreaAway = match.awayTeamId === "korea-republic";
+  const applies = isKoreaHome || isKoreaAway;
+  const opponent = applies ? (isKoreaHome ? awayTeam : homeTeam) : null;
+  const strategy = opponent?.koreaStrategy;
+
+  if (!applies) {
+    return {
+      applies: false,
+      notice: "대한민국이 포함되지 않은 경기입니다.",
+      points: []
+    };
+  }
+
+  if (!strategy || !opponent) {
+    return {
+      applies: true,
+      notice: "상대팀 정보가 아직 충분히 연결되지 않아 대한민국 관점 분석을 제한적으로 표시합니다.",
+      points: ["상대 포메이션과 핵심 선수 확인 후 압박 위치를 업데이트합니다."]
+    };
+  }
+
+  return {
+    applies: true,
+    notice: strategy.notice,
+    points: [
+      strategy.pressurePlan,
+      strategy.defensivePlan,
+      strategy.counterPlan,
+      strategy.setPiecePlan,
+      strategy.winScenario,
+      strategy.avoidScenario
+    ]
+  };
+}
+
 export function createMatchPageData(match: MatchDetailData): MatchPageData {
-  const isKoreaMatch = match.homeTeamId === "korea-republic" || match.awayTeamId === "korea-republic";
+  const homeTeam = match.homeTeamId ? getTeamVerificationDataById(match.homeTeamId) : null;
+  const awayTeam = match.awayTeamId ? getTeamVerificationDataById(match.awayTeamId) : null;
+  const expectedPlayers = [...createExpectedPlayers(match, homeTeam), ...createExpectedPlayers(match, awayTeam)];
 
   return {
     detail: match,
-    homeFormation: emptyFormation(match.homeTeamId, match.homeTeamName),
-    awayFormation: emptyFormation(match.awayTeamId, match.awayTeamName),
-    expectedPlayers: [],
-    suspendedPlayers: [],
-    injuryPlayers: [],
-    cardRiskPlayers: [],
+    homeFormation: homeTeam?.expectedLineup ?? emptyFormation(match.homeTeamId, match.homeTeamName),
+    awayFormation: awayTeam?.expectedLineup ?? emptyFormation(match.awayTeamId, match.awayTeamName),
+    expectedPlayers,
+    suspendedPlayers: expectedPlayers.filter((player) => player.suspensionStatus === "징계 결장" || player.suspensionStatus === "출전 금지"),
+    injuryPlayers: expectedPlayers.filter((player) => player.injuryStatus !== "정상" && player.injuryStatus !== "확인 필요"),
+    cardRiskPlayers: expectedPlayers.filter((player) => player.suspensionStatus === "경고 누적 위험"),
     prediction: {
       homeWinProbability: null,
       drawProbability: null,
       awayWinProbability: null,
       expectedScore: null,
-      confidence: "확인 필요",
-      variables: [
-        "공식 소집 명단 확인 필요",
-        "최근 경기 라인업 확인 필요",
-        "부상/징계/카드 정보 확인 필요"
-      ],
-      uncertainty: "팀 정보가 검증되지 않아 선수·감독·전술·포메이션 기반 예측을 제한합니다.",
-      lastUpdated: null
+      confidence: homeTeam && awayTeam ? "분석 참고" : "추가 수집 필요",
+      variables: createPredictionVariables(homeTeam, awayTeam),
+      uncertainty: "승률 숫자는 공식 확률이 아니므로 제한합니다. 대신 팀별 핵심 선수, 포메이션, 전술 강점과 경기 직전 변수를 연결해 참고용 분석 재료를 제공합니다.",
+      lastUpdated: homeTeam?.lastUpdated ?? awayTeam?.lastUpdated ?? null
     },
-    koreaAnalysis: {
-      applies: isKoreaMatch,
-      notice: isKoreaMatch
-        ? "대한민국과 상대팀의 최신 선수 명단, 포메이션, 부상/징계 정보가 충분히 검증되지 않아 구체적인 경기 전략은 제한적으로 제공합니다."
-        : "대한민국이 포함되지 않은 경기입니다.",
-      points: isKoreaMatch
-        ? [
-            "공식 선발 명단 확인 후 압박 위치를 업데이트합니다.",
-            "상대 카드/체력 변수가 확인되면 교체 전략 아이디어를 반영합니다.",
-            "세트피스 키커와 제공권 데이터가 확인되면 대응 방안을 구체화합니다."
-          ]
-        : []
-    },
-    sources: [fifaScheduleSource]
+    koreaAnalysis: createKoreaAnalysis(match, homeTeam, awayTeam),
+    sources: collectSources(homeTeam?.sources, awayTeam?.sources)
   };
 }

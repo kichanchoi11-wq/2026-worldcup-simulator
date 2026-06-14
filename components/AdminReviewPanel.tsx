@@ -62,12 +62,30 @@ export default function AdminReviewPanel() {
   const [storageSnapshot, setStorageSnapshot] = useState<AdminStorageSnapshot>(emptyStorageSnapshot);
 
   const audit = getGroupDataAudit();
+  const totalTeamBlocks = teamVerificationData.length * 5;
+  const filledTeamBlocks = teamVerificationData.reduce((sum, team) => {
+    const blocks = [
+      team.players.length > 0,
+      Boolean(team.coach.coachName && team.coach.sourceName && team.coach.sourceUrl && team.coach.lastUpdated),
+      Boolean(team.formation.formation && team.formation.sourceName && team.formation.sourceUrl && team.formation.lastUpdated),
+      Boolean(team.expectedLineup.formation && team.expectedLineup.sourceName && team.expectedLineup.sourceUrl && team.expectedLineup.lastUpdated),
+      Boolean(team.tactics.summary && team.tactics.sourceName && team.tactics.sourceUrl && team.tactics.lastUpdated)
+    ];
+
+    return sum + blocks.filter(Boolean).length;
+  }, 0);
+  const allTeamSources = teamVerificationData.flatMap((team) => team.sources);
+  const uniqueTeamSources = new Set(allTeamSources.map((source) => `${source.sourceName ?? "unknown"}-${source.sourceUrl ?? "unknown"}`));
+  const highTrustSources = allTeamSources.filter((source) => source.sourceLevel === "공식 확인" || source.sourceLevel === "신뢰도 높음").length;
   const teamDetailAudit = {
     total: teamVerificationData.length,
     missingSquads: teamVerificationData.filter((team) => team.players.length === 0).length,
     missingCoaches: teamVerificationData.filter((team) => !team.coach.coachName || !team.coach.sourceName || !team.coach.sourceUrl || !team.coach.lastUpdated).length,
-    missingFormations: teamVerificationData.filter((team) => !team.formation.formation || team.formation.players.length !== 11).length,
-    missingTactics: teamVerificationData.filter((team) => !team.tactics.summary || !team.tactics.sourceUrl).length
+    missingFormations: teamVerificationData.filter((team) => !team.formation.formation || !team.formation.sourceUrl).length,
+    missingTactics: teamVerificationData.filter((team) => !team.tactics.summary || !team.tactics.sourceUrl).length,
+    fillRate: totalTeamBlocks === 0 ? 0 : Math.round((filledTeamBlocks / totalTeamBlocks) * 100),
+    sourceCount: uniqueTeamSources.size,
+    highTrustSources
   };
   const matchDetailAudit = {
     total: matchDetails.length,
@@ -174,7 +192,7 @@ export default function AdminReviewPanel() {
       <div className="rounded border border-red-300/25 bg-red-400/10 p-5">
         <h2 className="text-xl font-black text-white">관리자 검토 모드</h2>
         <p className="mt-2 text-sm leading-relaxed text-red-50/80">
-          출처 없는 데이터는 확정 정보로 저장할 수 없습니다. 선수명, 감독명, 포메이션, 전술 설명, 카드/징계/부상 정보는 반드시 출처명, 출처 URL, 업데이트 날짜가 있어야 확정 표시할 수 있습니다.
+          팀 정보는 공식 출처와 신뢰 가능한 스쿼드 가이드를 분리해 표시합니다. 경기 직전 바뀌는 부상/징계/카드/확정 선발은 추가 수집 필요 상태로 유지합니다.
         </p>
       </div>
 
@@ -192,7 +210,7 @@ export default function AdminReviewPanel() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="font-black text-white">국가·경기 상세 데이터 검증</h3>
-            <p className="mt-1 text-sm text-white/60">출처 없는 선수·감독·전술·포메이션은 상세 페이지에서 확인 필요 또는 표시 불가로 처리됩니다.</p>
+            <p className="mt-1 text-sm text-white/60">감독·핵심 선수·전술·포메이션은 출처 수준을 함께 표시하고, 채움률과 출처 수를 이 패널에서 확인합니다.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/teams/korea-republic" className="rounded border border-trophy/60 bg-trophy/20 px-3 py-2 text-sm font-black text-white">
@@ -205,6 +223,9 @@ export default function AdminReviewPanel() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <DebugItem label="국가 상세 페이지 수" value={`${teamDetailAudit.total}개`} />
+          <DebugItem label="팀 정보 채움률" value={`${teamDetailAudit.fillRate}%`} />
+          <DebugItem label="고유 출처 수" value={`${teamDetailAudit.sourceCount}개`} />
+          <DebugItem label="공식/고신뢰 출처 항목" value={`${teamDetailAudit.highTrustSources}개`} />
           <DebugItem label="선수 명단 출처 확인 필요" value={`${teamDetailAudit.missingSquads}개`} />
           <DebugItem label="감독 재검증 필요" value={`${teamDetailAudit.missingCoaches}개`} />
           <DebugItem label="포메이션 재검증 필요" value={`${teamDetailAudit.missingFormations}개`} />

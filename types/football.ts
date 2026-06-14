@@ -9,6 +9,8 @@ export type DataSourceType =
 export type DisplayBadge =
   | "공식"
   | "공식 확인"
+  | "신뢰도 높음"
+  | "예상"
   | "API 확인"
   | "수동 확인"
   | "API 실제 데이터"
@@ -16,6 +18,7 @@ export type DisplayBadge =
   | "사용자 입력"
   | "경우의 수"
   | "확인 필요"
+  | "추가 수집 필요"
   | "분석 참고"
   | "재검증 필요"
   | "표시 불가"
@@ -29,12 +32,16 @@ export type DisplayBadge =
   | "부상"
   | "징계"
   | "경고 누적 위험"
-  | "체력 저하";
+  | "체력 저하"
+  | "체력 변수";
 
 export type VerificationConfidence =
   | "공식"
+  | "공식 확인"
   | "신뢰도 높음"
+  | "분석 참고"
   | "예상"
+  | "추가 수집 필요"
   | "확인 필요"
   | "표시 금지";
 
@@ -65,6 +72,8 @@ export interface SourceMeta {
   lastUpdated: string | null;
   isOfficial: boolean;
   confidence: VerificationConfidence;
+  sourceLevel?: "공식 확인" | "신뢰도 높음" | "참고 자료" | "확인 필요";
+  sourceNotes?: string | null;
 }
 
 export interface TeamRef extends Partial<SourceMeta> {

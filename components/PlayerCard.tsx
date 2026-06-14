@@ -8,6 +8,7 @@ export default function PlayerCard({ player }: { player: PlayerData }) {
         <div>
           <h3 className="font-black text-white">{player.playerName}</h3>
           <p className="text-sm text-white/55">{player.position} · {player.club ?? "소속팀 확인 필요"}</p>
+          <p className="mt-1 text-xs font-semibold text-trophy">{player.squadStatus}</p>
         </div>
         <Badge tone={player.availability}>{player.availability}</Badge>
       </div>
@@ -18,6 +19,10 @@ export default function PlayerCard({ player }: { player: PlayerData }) {
         </Badge>
       </div>
       <p className="mt-3 text-sm text-white/70">{player.sourceName ?? "출처 확인 필요"}</p>
+      <p className="mt-1 text-xs text-white/45">
+        {player.lastUpdated ?? "업데이트 날짜 확인 필요"} · {player.sourceLevel ?? player.confidence}
+      </p>
+      {player.sourceNotes ? <p className="mt-2 text-xs leading-5 text-white/45">{player.sourceNotes}</p> : null}
     </article>
   );
 }

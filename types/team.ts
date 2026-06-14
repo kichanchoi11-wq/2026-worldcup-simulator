@@ -4,6 +4,7 @@ export type VerificationStatus =
   | "공식 확인"
   | "신뢰도 높음"
   | "분석 참고"
+  | "추가 수집 필요"
   | "재검증 필요"
   | "확인 필요"
   | "표시 불가";
@@ -135,6 +136,9 @@ export interface TeamVerificationData {
   teamCode: string | null;
   groupId: string | null;
   groupPosition: number | null;
+  confederation?: string | null;
+  powerIndex?: string | null;
+  recentAchievements?: string[];
   flag: string;
   flagImageUrl?: string | null;
   flagAlt?: string | null;
