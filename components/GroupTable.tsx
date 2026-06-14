@@ -25,7 +25,7 @@ export default function GroupTable({ groups }: { groups: TeamGroup[] }) {
         </div>
         <h2 className="mt-3 text-xl font-black text-white">조 편성 데이터 확인 중</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-sky-50/80">
-          FIFA 경기 일정 기준 조 편성표와 각국 국기를 표시합니다. football-data.org에서 더 최신 경기·순위 데이터가 제공되면 실제 데이터로 별도 반영하며,
+          FIFA 경기 일정 기준 조 편성표와 각국 국기를 표시합니다. 실제 경기·순위 데이터는 API-Football을 우선 사용하고 football-data.org는 fallback으로만 별도 반영하며,
           팀 상세 정보는 최종 명단·감독 정보와 전술 분석 참고를 분리해 관리합니다.
         </p>
       </section>

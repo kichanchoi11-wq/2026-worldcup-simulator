@@ -5,7 +5,7 @@ import DataSourceBadge from "@/components/DataSourceBadge";
 const featureCards = [
   {
     title: "조별리그 실제 데이터",
-    body: "football-data.org API로 일정, 결과, 순위표를 서버 Route에서 조회합니다.",
+    body: "API-Football(API-SPORTS)로 일정, 결과, 순위표를 서버 Route에서 조회하고 football-data.org는 fallback으로만 사용합니다.",
     href: "/groups",
     sourceType: "API 실제 데이터" as const
   },

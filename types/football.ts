@@ -138,10 +138,89 @@ export interface StandingRow {
   sourceType: DataSourceType;
 }
 
+export type FootballApiProvider = "api-football" | "football-data.org" | "cache" | "static";
+export type FootballDataQuality = "live" | "fresh-cache" | "fallback" | "stale-cache" | "static-default" | "unavailable";
+
+export interface ApiFootballUsageSnapshot {
+  dateKey: string;
+  used: number;
+  limit: number;
+  softLimit: number;
+  remaining: number;
+  resetAt: string;
+  blocked: boolean;
+  warning: string | null;
+}
+
+export interface ApiFootballUsageLog {
+  id: string;
+  provider: FootballApiProvider;
+  endpoint: string;
+  resource: string;
+  counted: boolean;
+  status: "success" | "failed" | "blocked" | "cache-hit" | "fallback";
+  httpStatus: number | null;
+  message: string;
+  createdAt: string;
+}
+
+export interface ApiFootballSyncLog {
+  id: string;
+  resource: string;
+  preferredProvider: FootballApiProvider;
+  resolvedProvider: FootballApiProvider;
+  status: "success" | "fallback" | "cache" | "static";
+  count: number;
+  message: string;
+  createdAt: string;
+}
+
+export interface ApiFootballTeamRecord {
+  id: number | null;
+  name: string;
+  code: string | null;
+  country: string | null;
+  logo: string | null;
+  source: "api-football";
+  lastUpdated: string | null;
+}
+
+export type ApiFootballTrackedResource =
+  | "fixtures"
+  | "standings"
+  | "teams"
+  | "players"
+  | "coaches"
+  | "lineups"
+  | "events"
+  | "injuries"
+  | "statistics"
+  | "predictions";
+
+export interface ApiFootballResourceSnapshot {
+  resource: ApiFootballTrackedResource;
+  label: string;
+  source: FootballApiProvider;
+  lastUpdated: string;
+  cacheExpiresAt: string | null;
+  isFallbackData: boolean;
+  dataQuality: FootballDataQuality;
+  count: number;
+  rawData: unknown;
+  message: string | null;
+}
+
 export interface FootballApiEnvelope<T> {
   ok: boolean;
-  source: "football-data.org";
+  source: FootballApiProvider;
   lastUpdated: string;
+  cacheExpiresAt?: string | null;
+  isFallbackData?: boolean;
+  dataQuality?: FootballDataQuality;
+  cachedProvider?: FootballApiProvider | null;
+  fallbackChain?: string[];
+  usage?: ApiFootballUsageSnapshot;
+  rawData?: unknown;
   message: string | null;
   data: T;
 }

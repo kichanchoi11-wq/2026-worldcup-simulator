@@ -10,7 +10,8 @@ import { getAdvancedTeamDataAudit, getBrokenPlayerNameAudit } from "@/lib/teamAn
 import { validateGroupStageForTournament } from "@/lib/bracket";
 import { getGroupDataAudit } from "@/lib/scenario";
 import { migrateStoredFootballData, readStorage, removeStorageItem, storageKeys, writeStorage } from "@/lib/storage";
-import type { FootballApiEnvelope, FootballMatch, StandingRow, WorldCupGroupSlot } from "@/types/football";
+import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
+import type { ApiFootballResourceSnapshot, FootballApiEnvelope, FootballMatch, StandingRow, WorldCupGroupSlot } from "@/types/football";
 import type { FullTournamentPrediction, GroupSimulationData, ScenarioCalculatorData } from "@/types/simulation";
 
 type GroupId = WorldCupGroupSlot["groupId"];
@@ -46,6 +47,8 @@ type AdminStorageSnapshot = {
   scenario: ScenarioCalculatorData | null;
   apiMatches: FootballMatch[];
   apiStandings: StandingRow[];
+  apiResourceSnapshots: ApiFootballResourceSnapshot[];
+  apiProviderStatus: FootballDataRefreshSnapshot["data"]["providerStatus"] | null;
   manualEntries: ManualGroupEntry[];
 };
 
@@ -55,6 +58,8 @@ const emptyStorageSnapshot: AdminStorageSnapshot = {
   scenario: null,
   apiMatches: [],
   apiStandings: [],
+  apiResourceSnapshots: [],
+  apiProviderStatus: null,
   manualEntries: []
 };
 
@@ -125,6 +130,8 @@ export default function AdminReviewPanel() {
         scenario: readStorage<ScenarioCalculatorData | null>(storageKeys.scenarioCalculatorData, null),
         apiMatches: readStorage<FootballMatch[]>(storageKeys.apiMatchesData, []),
         apiStandings: readStorage<StandingRow[]>(storageKeys.apiStandingsData, []),
+        apiResourceSnapshots: readStorage<ApiFootballResourceSnapshot[]>(storageKeys.apiFootballResourceSnapshotsData, []),
+        apiProviderStatus: readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null),
         manualEntries: readStorage<ManualGroupEntry[]>(storageKeys.adminManualGroupEntries, [])
       });
     }, 0);
@@ -180,13 +187,18 @@ export default function AdminReviewPanel() {
     setApiMessage("API 데이터를 확인하는 중입니다.");
 
     try {
-      const [matchesResponse, standingsResponse] = await Promise.all([
+      const [matchesResponse, standingsResponse, statusResponse] = await Promise.all([
         fetch("/api/football/matches"),
-        fetch("/api/football/standings")
+        fetch("/api/football/standings"),
+        fetch("/api/football/provider-status")
       ]);
 
       const matchesPayload = (await matchesResponse.json()) as FootballApiEnvelope<FootballMatch[]>;
       const standingsPayload = (await standingsResponse.json()) as FootballApiEnvelope<StandingRow[]>;
+      const statusPayload = (await statusResponse.json()) as {
+        ok: boolean;
+        data?: FootballDataRefreshSnapshot["data"]["providerStatus"];
+      };
 
       if (matchesPayload.ok && matchesPayload.data.length > 0) {
         writeStorage(storageKeys.apiMatchesData, matchesPayload.data);
@@ -194,6 +206,10 @@ export default function AdminReviewPanel() {
 
       if (standingsPayload.ok && standingsPayload.data.length > 0) {
         writeStorage(storageKeys.apiStandingsData, standingsPayload.data);
+      }
+
+      if (statusPayload.ok && statusPayload.data) {
+        writeStorage(storageKeys.apiFootballProviderStatusData, statusPayload.data);
       }
 
       const messages = [matchesPayload.message, standingsPayload.message].filter(Boolean);
@@ -254,7 +270,7 @@ export default function AdminReviewPanel() {
         </p>
       </div>
 
-      <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+      <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-8">
         <StatusItem label="조 수" value={`${audit.groupCount}개`} tone="neutral" />
         <StatusItem label="국가명 표시" value={`${audit.teamCount - audit.emptySlots.length}팀`} tone="success" />
         <StatusItem label="공식 확정" value={`${audit.officiallyConfirmed.length}팀`} tone={audit.officiallyConfirmed.length > 0 ? "success" : "warning"} />
@@ -262,6 +278,11 @@ export default function AdminReviewPanel() {
         <StatusItem label="빈 자리" value={`${audit.emptySlots.length}개`} tone={audit.emptySlots.length > 0 ? "warning" : "success"} />
         <StatusItem label="수동 확인" value={`${audit.manuallyVerified.length}팀`} tone="warning" />
         <StatusItem label="저장 경기" value={`${storageSnapshot.apiMatches.length}개`} tone="API 실제 데이터" />
+        <StatusItem
+          label="API-Football"
+          value={`${storageSnapshot.apiProviderStatus?.apiFootball.used ?? 0}/${storageSnapshot.apiProviderStatus?.apiFootball.limit ?? 100}회`}
+          tone={storageSnapshot.apiProviderStatus?.apiFootball.blocked ? "warning" : "success"}
+        />
       </section>
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
@@ -408,6 +429,16 @@ export default function AdminReviewPanel() {
           </button>
         </div>
         {apiMessage ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{apiMessage}</p> : null}
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <DebugItem
+            label="API-Football 호출"
+            value={`${storageSnapshot.apiProviderStatus?.apiFootball.used ?? 0}/${storageSnapshot.apiProviderStatus?.apiFootball.limit ?? 100}회`}
+          />
+          <DebugItem label="남은 호출" value={`${storageSnapshot.apiProviderStatus?.apiFootball.remaining ?? 100}회`} />
+          <DebugItem label="리소스 저장 구조" value={`${storageSnapshot.apiResourceSnapshots.length}종`} />
+          <DebugItem label="서버 캐시 항목" value={`${storageSnapshot.apiProviderStatus?.cacheEntries.length ?? 0}개`} />
+          <DebugItem label="fallback 순서" value={storageSnapshot.apiProviderStatus?.providerOrder.join(" → ") ?? "api-football → football-data.org → cache → static"} />
+        </div>
       </section>
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">

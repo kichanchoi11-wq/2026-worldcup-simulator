@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
 import MatchCard from "@/components/MatchCard";
-import { readStorage, storageKeys, writeStorage } from "@/lib/storage";
-import type { FootballApiEnvelope, FootballMatch, StandingRow } from "@/types/football";
+import { readStorage, storageKeys } from "@/lib/storage";
+import type { FootballMatch, StandingRow } from "@/types/football";
 
 type LiveState = {
   loading: boolean;
@@ -39,60 +39,31 @@ export default function LiveDataPanel() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function refresh() {
+  function refresh() {
     setState((current) => ({ ...current, loading: true, message: null }));
 
-    try {
-      const [matchesResponse, standingsResponse] = await Promise.all([
-        fetch("/api/football/matches"),
-        fetch("/api/football/standings")
-      ]);
+    const storedMatches = readStorage<FootballMatch[]>(storageKeys.apiMatchesData, []);
+    const storedStandings = readStorage<StandingRow[]>(storageKeys.apiStandingsData, []);
 
-      if (!matchesResponse.ok || !standingsResponse.ok) {
-        throw new Error("API Route response failed");
-      }
-
-      const matchesPayload = (await matchesResponse.json()) as FootballApiEnvelope<FootballMatch[]>;
-      const standingsPayload = (await standingsResponse.json()) as FootballApiEnvelope<StandingRow[]>;
-
-      if (matchesPayload.ok && matchesPayload.data.length > 0) {
-        writeStorage(storageKeys.apiMatchesData, matchesPayload.data);
-      }
-
-      if (standingsPayload.ok && standingsPayload.data.length > 0) {
-        writeStorage(storageKeys.apiStandingsData, standingsPayload.data);
-      }
-
-      setState((current) => {
-        const nextMatches = matchesPayload.ok && matchesPayload.data.length > 0 ? matchesPayload.data : current.matches;
-        const nextStandings = standingsPayload.ok && standingsPayload.data.length > 0 ? standingsPayload.data : current.standings;
-        const messages = [matchesPayload.message, standingsPayload.message].filter(Boolean);
-
-        return {
-          loading: false,
-          message:
-            messages.length > 0
-              ? messages.join(" ")
-              : "API 실제 데이터를 새로고침했습니다. 사용자 입력·AI 예측·경우의 수 데이터와 분리해 저장했습니다.",
-          matches: nextMatches,
-          standings: nextStandings
-        };
-      });
-    } catch {
-      setState((current) => ({
-        ...current,
-        loading: false,
-        message: "API 새로고침 중 오류가 발생했습니다. 이전에 저장된 API 실제 데이터와 사용자 입력 데이터는 유지합니다."
-      }));
-    }
+    setState({
+      loading: false,
+      message:
+        storedMatches.length > 0 || storedStandings.length > 0
+          ? "관리자 새로고침으로 저장된 API 실제 데이터를 다시 읽었습니다."
+          : "아직 저장된 API 실제 데이터가 없습니다. 관리자 검토 모드에서 수동 새로고침을 먼저 실행하세요.",
+      matches: storedMatches,
+      standings: storedStandings
+    });
   }
 
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-white/10 bg-white/[0.06] p-4">
         <div>
-          <h2 className="text-xl font-black text-white">football-data.org 실시간 결과</h2>
-          <p className="mt-1 text-sm text-white/60">서버 API Route를 통해서만 외부 API 키를 사용합니다.</p>
+          <h2 className="text-xl font-black text-white">API-Football 실시간 결과</h2>
+          <p className="mt-1 text-sm text-white/60">
+            관리자 새로고침으로 저장된 API-Football 데이터를 표시하고, 실패한 항목은 football-data.org와 저장 캐시로 fallback합니다.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge tone="API 실제 데이터">API 실제 데이터</Badge>
@@ -105,7 +76,7 @@ export default function LiveDataPanel() {
           disabled={state.loading}
           className="rounded border border-trophy/60 bg-trophy/20 px-4 py-2 text-sm font-black text-white transition hover:bg-trophy/30 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {state.loading ? "불러오는 중" : "API 경기 데이터 새로고침"}
+          {state.loading ? "불러오는 중" : "저장 데이터 다시 읽기"}
         </button>
       </div>
 
@@ -116,9 +87,9 @@ export default function LiveDataPanel() {
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
-        <GuideItem title="API 키 없음" body="환경변수가 없으면 외부 요청을 중단하고, 저장 데이터와 사용자 입력은 건드리지 않습니다." />
-        <GuideItem title="응답 실패" body="HTTP 오류나 네트워크 오류가 나면 마지막으로 저장된 API 실제 데이터만 유지합니다." />
-        <GuideItem title="빈 응답" body="API가 정상 응답해도 표시할 경기나 순위가 없으면 기존 저장값을 덮어쓰지 않습니다." />
+        <GuideItem title="공개 화면 제한" body="이 버튼은 외부 API를 새로 호출하지 않고, 저장된 API 데이터만 다시 읽습니다." />
+        <GuideItem title="100회 제한 보호" body="무료 플랜 호출량이 soft limit에 닿으면 외부 호출을 멈추고 fallback 데이터를 표시합니다." />
+        <GuideItem title="fallback 순서" body="API-Football 실패 시 football-data.org, 서버 캐시, 정적 기본 데이터 순서로 내려갑니다." />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">

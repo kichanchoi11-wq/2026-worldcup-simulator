@@ -3,6 +3,7 @@ import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import FormationBoard from "@/components/FormationBoard";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
+import TeamApiStatusPanel from "@/components/TeamApiStatusPanel";
 import TeamPlayerRoster from "@/components/TeamPlayerRoster";
 import { getTeamAnalysisBundle } from "@/lib/teamAnalysis";
 import { getAllTeamIds, getTeamDetailRecord, hasCompleteSource } from "@/lib/teamDetails";
@@ -60,7 +61,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
           <StatusCard label="확인 출처" value={`${verifiedSourceCount}개`} tone={verifiedSourceCount > 0 ? "신뢰도 높음" : "추가 수집 필요"} />
         </div>
         <p className="mt-4 rounded border border-trophy/25 bg-trophy/10 p-4 text-sm leading-6 text-trophy/90">
-          팀별 핵심 선수, 감독, 포메이션, 전술은 신뢰 가능한 스쿼드 가이드와 대회 출처를 기반으로 표시합니다. 부상·징계·카드·확정 선발은 경기 직전 공식 발표에 따라 바뀔 수 있어 별도 확인 상태로 유지합니다.
+          팀별 핵심 선수, 감독, 포메이션, 전술은 API-Football 저장 데이터를 우선 확인하고, 부족한 항목은 신뢰 가능한 스쿼드 가이드와 정적 fallback 데이터로 표시합니다. 부상·징계·카드·확정 선발은 경기 직전 공식 발표에 따라 바뀔 수 있어 별도 확인 상태로 유지합니다.
         </p>
       </section>
 
@@ -81,6 +82,8 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
       </section>
 
       <FootballDataRefreshPanel size="compact" />
+
+      <TeamApiStatusPanel teamNameKo={team.nameKo} teamNameEn={detail.teamNameEn} teamCode={detail.teamCode} />
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <h2 className="text-xl font-black text-white">기본 정보와 감독</h2>

@@ -14,14 +14,24 @@ import type {
 
 const analysisDate = "2026-06-14";
 
-const footballDataSource: SourceMeta = {
-  sourceName: "football-data.org API documentation",
+const apiFootballSource: SourceMeta = {
+  sourceName: "API-Football documentation",
+  sourceUrl: "https://www.api-football.com/documentation-v3",
+  lastUpdated: analysisDate,
+  isOfficial: false,
+  confidence: "분석 참고",
+  sourceLevel: "참고 자료",
+  sourceNotes: "API-Football 팀, 경기, 순위, 부상, 라인업 데이터 연동 우선순위 확인용"
+};
+
+const footballDataFallbackSource: SourceMeta = {
+  sourceName: "football-data.org fallback API documentation",
   sourceUrl: "https://www.football-data.org/documentation/api",
   lastUpdated: analysisDate,
   isOfficial: false,
   confidence: "분석 참고",
   sourceLevel: "참고 자료",
-  sourceNotes: "경기 일정, 결과, 순위, 일부 이벤트 데이터 연동 가능 범위 확인용"
+  sourceNotes: "API-Football 부족 또는 실패 시 경기 일정, 결과, 순위 fallback 가능 범위 확인용"
 };
 
 function unique(items: Array<string | null | undefined>) {
@@ -53,8 +63,10 @@ function sourceUrl(team: TeamVerificationData) {
 }
 
 function sourceList(team: TeamVerificationData) {
-  return unique([...team.sources, footballDataSource].map((source) => `${source.sourceName}-${source.sourceUrl}`))
-    .map((key) => [...team.sources, footballDataSource].find((source) => `${source.sourceName}-${source.sourceUrl}` === key))
+  const sources = [...team.sources, apiFootballSource, footballDataFallbackSource];
+
+  return unique(sources.map((source) => `${source.sourceName}-${source.sourceUrl}`))
+    .map((key) => sources.find((source) => `${source.sourceName}-${source.sourceUrl}` === key))
     .filter((source): source is SourceMeta => Boolean(source));
 }
 
