@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { readStorage, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballUsageSnapshot } from "@/types/football";
@@ -54,6 +55,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   const [snapshot, setSnapshot] = useState<FootballDataRefreshSnapshot | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { isAdminAuthenticated, isChecking } = useAdminAuth();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -129,12 +131,28 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   }
 
   async function refresh() {
+    if (!isAdminAuthenticated) {
+      setMessage("관리자 인증 후 사용할 수 있습니다.");
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
     try {
-      const response = await fetch("/api/refresh-football-data", { method: "POST" });
-      const nextSnapshot = (await response.json()) as FootballDataRefreshSnapshot;
+      const response = await fetch("/api/refresh-football-data", { method: "POST", credentials: "same-origin" });
+      const payload = (await response.json()) as Partial<FootballDataRefreshSnapshot> & { message?: string };
+
+      if (response.status === 401) {
+        setMessage(payload.message ?? "관리자 인증이 필요합니다.");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "?쇰? ?곗씠?곕? 遺덈윭?ㅼ? 紐삵뻽?듬땲??");
+      }
+
+      const nextSnapshot = payload as FootballDataRefreshSnapshot;
 
       persistSnapshot(nextSnapshot);
       setMessage(nextSnapshot.message);
@@ -152,6 +170,8 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   const resourceSnapshotCount = asArray(data?.resourceSnapshots).length;
   const matchReviewCount = asArray(data?.matchReviews).length;
   const results = asArray(snapshot?.results);
+  const showRefreshButton = size === "full" && isAdminAuthenticated;
+  const showAdminNotice = size === "full" && !isAdminAuthenticated;
 
   return (
     <section className="rounded border border-sky-300/25 bg-sky-400/10 p-5 shadow-panel">
@@ -170,7 +190,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
             모든 외부 호출은 서버 Route에서만 실행하며, 호출 제한에 가까워지면 저장 데이터와 정적 기본 데이터로 내려갑니다.
           </p>
         </div>
-        {size === "full" ? (
+        {showRefreshButton ? (
           <button
             type="button"
             onClick={refresh}
@@ -179,6 +199,10 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
           >
             {loading ? "새로고침 중" : "최신 정보 수동 새로고침"}
           </button>
+        ) : showAdminNotice ? (
+          <div className="rounded border border-white/10 bg-white/8 px-4 py-2 text-sm font-black text-white/75">
+            {isChecking ? "관리자 인증 확인 중" : "관리자 인증 후 사용할 수 있습니다."}
+          </div>
         ) : null}
       </div>
 

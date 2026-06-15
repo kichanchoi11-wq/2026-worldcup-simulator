@@ -33,10 +33,19 @@ API_FOOTBALL_SEASON=2026
 FOOTBALL_DATA_ORG_KEY=
 FOOTBALL_DATA_API_KEY=
 GEMINI_API_KEY=
+ADMIN_PASSWORD=091009
+CRON_SECRET=
 ```
 
 `API_FOOTBALL_KEY`는 API-Football(API-SPORTS) 서버 Route에서만 사용합니다. 브라우저에서 직접 외부 API를 호출하지 않으며, 무료 플랜 보호를 위해 기본 하루 100회 제한과 95회 soft limit을 적용합니다.
 `FOOTBALL_DATA_ORG_KEY` 또는 기존 호환 이름 `FOOTBALL_DATA_API_KEY`는 API-Football 실패 시 fallback 용도로만 사용합니다. 두 키가 모두 없어도 저장 캐시와 정적 기본 데이터로 앱은 중단되지 않습니다.
+
+## 관리자 인증
+
+- 관리자 검토 모드와 수동 새로고침은 관리자 비밀번호 인증 후 사용할 수 있습니다.
+- 기본 비밀번호는 `091009`이며, 운영 배포에서는 Vercel 환경변수 `ADMIN_PASSWORD`로 관리하는 것을 권장합니다.
+- 브라우저에는 탭 단위 `sessionStorage` 인증 상태만 저장하고, 서버 API Route는 HttpOnly 쿠키 또는 `x-admin-password` 헤더를 다시 확인합니다.
+- `/api/refresh-football-data`와 `/api/cron/update-football-data`는 인증 없이 실행되지 않습니다. Cron은 `CRON_SECRET`이 있으면 `Authorization: Bearer <CRON_SECRET>` 또는 `x-cron-secret` 헤더로도 실행할 수 있습니다.
 
 ## Vercel 배포
 

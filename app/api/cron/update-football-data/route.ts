@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
+import { createAdminUnauthorizedResponse, isAdminRequest, isCronRequestAuthorized } from "@/lib/adminAuth";
 import { refreshFootballData } from "@/lib/autoUpdateService";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ ok: false, message: "Unauthorized cron request" }, { status: 401 });
-    }
+  if (!isCronRequestAuthorized(request) && !isAdminRequest(request)) {
+    return createAdminUnauthorizedResponse();
   }
 
   const snapshot = await refreshFootballData("cron");
