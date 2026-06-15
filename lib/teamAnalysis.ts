@@ -12,7 +12,27 @@ import type {
   TeamVerificationData
 } from "@/types/team";
 
-const analysisDate = "2026-06-14";
+const analysisDate = "2026-06-15";
+
+const fifaOfficialSquadSource: SourceMeta = {
+  sourceName: "FIFA World Cup 2026 official squad list",
+  sourceUrl: "https://fdp.fifa.org/assetspublic/ce281/pdf/SquadLists-English.pdf",
+  lastUpdated: analysisDate,
+  isOfficial: true,
+  confidence: "공식 확인",
+  sourceLevel: "공식 확인",
+  sourceNotes: "선수 명단과 감독명 재검증 기준으로 사용하는 FIFA 공식 스쿼드 PDF"
+};
+
+const fifaSquadAnnouncementSource: SourceMeta = {
+  sourceName: "FIFA World Cup 2026 squad announcements",
+  sourceUrl: "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/all-world-cup-squad-announcements",
+  lastUpdated: analysisDate,
+  isOfficial: true,
+  confidence: "공식 확인",
+  sourceLevel: "공식 확인",
+  sourceNotes: "참가국 최종 명단과 감독 정보를 확인하는 FIFA 공식 발표 허브"
+};
 
 const apiFootballSource: SourceMeta = {
   sourceName: "API-Football documentation",
@@ -63,7 +83,7 @@ function sourceUrl(team: TeamVerificationData) {
 }
 
 function sourceList(team: TeamVerificationData) {
-  const sources = [...team.sources, apiFootballSource, footballDataFallbackSource];
+  const sources = [...team.sources, fifaOfficialSquadSource, fifaSquadAnnouncementSource, apiFootballSource, footballDataFallbackSource];
 
   return unique(sources.map((source) => `${source.sourceName}-${source.sourceUrl}`))
     .map((key) => sources.find((source) => `${source.sourceName}-${source.sourceUrl}` === key))
@@ -242,6 +262,7 @@ export function getTeamFormationProfile(team: TeamVerificationData): TeamFormati
       }
     ],
     formationNotes: [
+      "FIFA 공식 스쿼드/감독 정보와 신뢰 가능한 스쿼드 가이드를 기준으로 재검토했으며, 포메이션은 최근 운용·예상 운용·대체 운용을 분리해 표시합니다.",
       "최근 실제 경기 라인업과 공개 스쿼드 자료가 모두 확정되면 경기별 포메이션 이력을 더 촘촘하게 갱신합니다.",
       "현재 표시는 단일 고정 포메이션이 아니라 최근 자료 기준의 주 운용/예상/대체 구조입니다.",
       team.expectedLineup.notes.join(" ")

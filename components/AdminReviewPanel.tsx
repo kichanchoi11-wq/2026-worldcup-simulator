@@ -4,8 +4,9 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/Badge";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
-import { matchDetails } from "@/data/matchDetails";
+import { createMatchPageData, matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
+import { createMatchReview, isFinishedMatch } from "@/lib/matchReviewService";
 import { getAdvancedTeamDataAudit, getBrokenPlayerNameAudit } from "@/lib/teamAnalysis";
 import { validateGroupStageForTournament } from "@/lib/bracket";
 import { getGroupDataAudit } from "@/lib/scenario";
@@ -69,6 +70,7 @@ export default function AdminReviewPanel() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [teamRefreshMessage, setTeamRefreshMessage] = useState<string | null>(null);
   const [adminToolMessage, setAdminToolMessage] = useState<string | null>(null);
+  const [geminiReviewMessage, setGeminiReviewMessage] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState<ManualGroupEntry>(emptyManualEntry);
   const [storageSnapshot, setStorageSnapshot] = useState<AdminStorageSnapshot>(emptyStorageSnapshot);
 
@@ -112,6 +114,25 @@ export default function AdminReviewPanel() {
     total: matchDetails.length,
     missingDates: matchDetails.filter((match) => !match.dateTime).length,
     missingStadiums: matchDetails.filter((match) => !match.stadium).length
+  };
+  const matchPageAudits = matchDetails.map((match) => {
+    const pageData = createMatchPageData(match);
+    return {
+      pageData,
+      review: createMatchReview(pageData)
+    };
+  });
+  const reviewCandidates = matchPageAudits.filter((item) => Boolean(item.review));
+  const matchDataAudit = {
+    finishedMatches: matchDetails.filter(isFinishedMatch).length,
+    generatedReviews: reviewCandidates.length,
+    missingReviews: matchDetails.filter(isFinishedMatch).length - reviewCandidates.length,
+    missingCardEvents: matchPageAudits.filter((item) => item.pageData.dataGaps.some((gap) => gap.id === "card-events")).length,
+    missingCardTotals: matchPageAudits.filter((item) => item.pageData.dataGaps.some((gap) => gap.id === "player-card-totals")).length,
+    missingSuspensions: matchPageAudits.filter((item) => item.pageData.dataGaps.some((gap) => gap.id === "suspensions")).length,
+    missingInjuries: matchPageAudits.filter((item) => item.pageData.dataGaps.some((gap) => gap.id === "injuries")).length,
+    missingFitness: matchPageAudits.filter((item) => item.pageData.dataGaps.some((gap) => gap.id === "fitness")).length,
+    criticalGaps: matchPageAudits.reduce((sum, item) => sum + item.pageData.dataGaps.filter((gap) => gap.severity === "critical").length, 0)
   };
   const advancedAudit = getAdvancedTeamDataAudit();
   const brokenNameAudit = getBrokenPlayerNameAudit();
@@ -190,6 +211,42 @@ export default function AdminReviewPanel() {
     setAdminToolMessage(
       "오래된 데이터 정리 점검 완료: AI 예측, API 경기, 수동 입력 데이터는 분리 저장 중입니다. 삭제는 아래 개별 초기화 버튼으로만 수행합니다."
     );
+  }
+
+  async function regenerateGeminiReview() {
+    const candidate = reviewCandidates[0];
+
+    if (!candidate) {
+      setGeminiReviewMessage("종료 경기 또는 실제 스코어가 없어 Gemini 리뷰 재생성 대상이 없습니다.");
+      return;
+    }
+
+    setGeminiReviewMessage("Gemini 경기 리뷰를 서버 Route에서 생성하는 중입니다.");
+
+    try {
+      const response = await fetch("/api/gemini/match-review", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ matchId: candidate.pageData.detail.matchId })
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        usedGemini?: boolean;
+        message?: string;
+        review?: { metadata?: { generatedBy?: string; model?: string | null; generatedAt?: string } } | null;
+      };
+
+      setGeminiReviewMessage(
+        payload.ok
+          ? `${payload.message ?? "리뷰 생성 완료"} 생성 방식: ${payload.review?.metadata?.generatedBy ?? (payload.usedGemini ? "gemini" : "fallback")} / 모델: ${payload.review?.metadata?.model ?? "내부 규칙"}`
+          : payload.message ?? "Gemini 리뷰 생성에 실패했습니다."
+      );
+    } catch {
+      setGeminiReviewMessage("Gemini 리뷰 API 호출에 실패했습니다. 기존 리뷰와 저장 데이터는 유지합니다.");
+    }
   }
 
   async function refreshApiData() {
@@ -374,6 +431,9 @@ export default function AdminReviewPanel() {
             <button type="button" onClick={runStaleDataCleanupCheck} className="rounded border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-sm font-black text-white">
               오래된 데이터 정리 점검
             </button>
+            <button type="button" onClick={regenerateGeminiReview} className="rounded border border-violet-300/50 bg-violet-400/15 px-3 py-2 text-sm font-black text-white">
+              Gemini 경기 리뷰 재생성
+            </button>
           </div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -383,8 +443,18 @@ export default function AdminReviewPanel() {
           <DebugItem label="리스크 프로필" value={`${advancedAudit.riskProfiles}팀`} />
           <DebugItem label="대한민국 상대 승률" value={`${advancedAudit.koreaPredictions}팀`} />
           <DebugItem label="깨진 선수명 감지" value={`${advancedAudit.brokenNames}건`} />
+          <DebugItem label="종료 경기" value={`${matchDataAudit.finishedMatches}경기`} />
+          <DebugItem label="생성된 경기 리뷰" value={`${matchDataAudit.generatedReviews}건`} />
+          <DebugItem label="리뷰 누락" value={`${matchDataAudit.missingReviews}건`} />
+          <DebugItem label="카드 이벤트 미연동" value={`${matchDataAudit.missingCardEvents}경기`} />
+          <DebugItem label="카드 누적 미연동" value={`${matchDataAudit.missingCardTotals}경기`} />
+          <DebugItem label="징계 재확인" value={`${matchDataAudit.missingSuspensions}경기`} />
+          <DebugItem label="부상 재확인" value={`${matchDataAudit.missingInjuries}경기`} />
+          <DebugItem label="체력 계산 보류" value={`${matchDataAudit.missingFitness}경기`} />
+          <DebugItem label="치명 결측" value={`${matchDataAudit.criticalGaps}건`} />
         </div>
         {adminToolMessage ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{adminToolMessage}</p> : null}
+        {geminiReviewMessage ? <p className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-3 text-sm text-violet-50/80">{geminiReviewMessage}</p> : null}
         {brokenNameAudit.length > 0 ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {brokenNameAudit.slice(0, 6).map((item) => (

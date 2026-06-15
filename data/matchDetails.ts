@@ -2,11 +2,26 @@ import { allOfficialBracketSlots } from "@/data/fifaBracket";
 import { getTeamVerificationDataById } from "@/data/teamVerificationData";
 import { worldCupGroupSlots } from "@/data/worldCupGroups";
 import type { SourceMeta } from "@/types/football";
-import type { MatchDetailData, MatchPageData, MatchPlayerStatus } from "@/types/match";
+import type {
+  InjuryStatus,
+  MatchCardEvent,
+  MatchDataGap,
+  MatchDetailData,
+  MatchPageData,
+  MatchPlayerStatus,
+  PlayerCardStatus,
+  SuspensionStatus,
+  TeamFitnessProfile
+} from "@/types/match";
 import type { FormationData, PlayerData, TeamVerificationData } from "@/types/team";
 
 const competition = "2026 FIFA 월드컵";
 const lastUpdated = "2026-06-14";
+const missingCardEventReason = "API-Football fixture events 또는 FIFA 공식 매치 리포트의 카드 이벤트가 아직 저장되지 않았습니다.";
+const missingCardTotalReason = "선수별 경고/퇴장 누적은 API-Football events, 공식 경기 보고서, 대회 징계 공지가 연결되어야 확정할 수 있습니다.";
+const missingInjuryReason = "경기별 부상 명단은 팀 공식 발표 또는 API-Football injuries 응답이 확인되어야 확정할 수 있습니다.";
+const missingSuspensionReason = "징계 결장과 경고 누적 출전 정지는 FIFA/대회 공식 징계 공지 또는 경기 이벤트 데이터가 필요합니다.";
+const missingFitnessReason = "최근 출전 시간, 이동 거리, 휴식일, 연장전 여부 데이터가 없어 체력 부하를 확정 계산할 수 없습니다.";
 
 const fifaScheduleSource: SourceMeta = {
   sourceName: "FIFA World Cup 26 match schedule",
@@ -188,6 +203,221 @@ function createExpectedPlayers(match: MatchDetailData, team: TeamVerificationDat
   return selectedPlayers.slice(0, 11).map((player, index) => toMatchPlayer(match, team, player, index));
 }
 
+function sourceFromPlayer(player: MatchPlayerStatus) {
+  return {
+    sourceName: player.sourceName,
+    sourceUrl: player.sourceUrl,
+    lastUpdated: player.lastUpdated,
+    isOfficial: player.isOfficial,
+    confidence: player.confidence,
+    sourceLevel: player.sourceLevel,
+    sourceNotes: player.sourceNotes
+  };
+}
+
+function createPlayerCardStatus(player: MatchPlayerStatus): PlayerCardStatus {
+  const hasCardTotals = player.yellowCards !== null || player.redCards !== null;
+  const hasSuspensionSignal = player.suspensionStatus !== "확인 필요" && player.suspensionStatus !== "없음";
+
+  return {
+    matchId: player.matchId,
+    teamId: player.teamId,
+    playerId: player.playerId,
+    playerName: player.playerName,
+    yellowCards: player.yellowCards,
+    redCards: player.redCards,
+    status: hasSuspensionSignal ? player.suspensionStatus : hasCardTotals ? "없음" : "확인 필요",
+    evidenceStatus: hasCardTotals ? "api-football" : hasSuspensionSignal ? "static" : "missing",
+    missingReason: hasCardTotals ? null : missingCardTotalReason,
+    notes: [
+      hasSuspensionSignal
+        ? "정적 선수 상태에 카드/징계 위험 신호가 표시되어 있습니다."
+        : "현재 저장 데이터에는 선수별 카드 누적 수가 없습니다.",
+      "확정 수치는 API-Football events 또는 공식 경기 보고서 확인 후 갱신합니다."
+    ],
+    ...sourceFromPlayer(player)
+  };
+}
+
+function createSuspensionStatus(player: MatchPlayerStatus): SuspensionStatus {
+  const confirmedStatus = player.suspensionStatus !== "확인 필요";
+  const appliesToMatch =
+    player.suspensionStatus === "징계 결장" || player.suspensionStatus === "출전 금지"
+      ? true
+      : player.suspensionStatus === "없음"
+        ? false
+        : null;
+
+  return {
+    matchId: player.matchId,
+    teamId: player.teamId,
+    playerId: player.playerId,
+    playerName: player.playerName,
+    status: player.suspensionStatus,
+    appliesToMatch,
+    evidenceStatus: confirmedStatus ? "static" : "missing",
+    missingReason: confirmedStatus ? "정적 선수 상태 기준입니다. 경기 당일 공식 징계 공지 확인 전까지 재검증 대상입니다." : missingSuspensionReason,
+    notes: [
+      appliesToMatch === true ? "이 경기 출전 제한 가능성이 표시된 선수입니다." : "공식 징계 공지 확인 전까지 출전 가능 여부를 재검증합니다.",
+      "경고 누적, 퇴장 징계, 대회별 출전 정지는 경기별 공식 기록과 연결해야 합니다."
+    ],
+    ...sourceFromPlayer(player)
+  };
+}
+
+function createInjuryStatus(player: MatchPlayerStatus): InjuryStatus {
+  const confirmedStatus = player.injuryStatus !== "확인 필요";
+
+  return {
+    matchId: player.matchId,
+    teamId: player.teamId,
+    playerId: player.playerId,
+    playerName: player.playerName,
+    status: player.injuryStatus,
+    availability: player.availability,
+    evidenceStatus: confirmedStatus ? "static" : "missing",
+    missingReason: confirmedStatus ? "정적 선수 상태 기준입니다. 경기 전 공식 팀 발표 확인 전까지 재검증 대상입니다." : missingInjuryReason,
+    notes: [
+      player.injuryStatus === "정상" ? "현재 정적 데이터에는 부상 표시가 없습니다." : "부상/출전 불투명 상태가 표시된 선수입니다.",
+      "최종 출전 가능 여부는 공식 라인업과 팀 발표가 필요합니다."
+    ],
+    ...sourceFromPlayer(player)
+  };
+}
+
+function createTeamFitnessProfile(match: MatchDetailData, team: TeamVerificationData | null, players: MatchPlayerStatus[]): TeamFitnessProfile | null {
+  if (!team) {
+    return null;
+  }
+
+  const overloadedPlayers = players.filter((player) => player.fatigueRisk === "높음").slice(0, 5);
+  const fallbackOverloadPlayers = overloadedPlayers.length > 0 ? overloadedPlayers : players.filter((player) => player.expectedStarter).slice(0, 4);
+  const source = team.sources.find((item) => item.sourceUrl) ?? team.sources[0];
+  const scheduleReason = match.dateTime
+    ? missingFitnessReason
+    : `${missingFitnessReason} 특히 이 경기의 킥오프 시간이 아직 저장되지 않아 휴식일 계산도 보류됩니다.`;
+
+  return {
+    matchId: match.matchId,
+    teamId: team.teamId,
+    teamName: team.teamName,
+    restDays: null,
+    fatigueLevel: "확인 필요",
+    travelLoad: "확인 필요",
+    overloadedPlayers: fallbackOverloadPlayers,
+    evidenceStatus: "missing",
+    missingReason: scheduleReason,
+    notes: [
+      "현재는 핵심/예상 선발 선수 중심의 확인 대상만 표시합니다.",
+      "최근 출전 시간, 이동 경로, 경기장, 연장전 여부가 저장되면 자동 계산으로 전환합니다."
+    ],
+    sourceName: source?.sourceName ?? null,
+    sourceUrl: source?.sourceUrl ?? null,
+    lastUpdated: source?.lastUpdated ?? team.lastUpdated,
+    isOfficial: source?.isOfficial ?? false,
+    confidence: source?.confidence ?? "확인 필요",
+    sourceLevel: source?.sourceLevel ?? "확인 필요",
+    sourceNotes: source?.sourceNotes ?? null
+  };
+}
+
+function createMatchCardEvents(_match: MatchDetailData): MatchCardEvent[] {
+  return [];
+}
+
+function createDataGaps(match: MatchDetailData, page: {
+  expectedPlayers: MatchPlayerStatus[];
+  matchCardEvents: MatchCardEvent[];
+  cardStatuses: PlayerCardStatus[];
+  suspensionStatuses: SuspensionStatus[];
+  injuryStatuses: InjuryStatus[];
+  teamFitnessProfiles: TeamFitnessProfile[];
+}): MatchDataGap[] {
+  const gaps: MatchDataGap[] = [];
+
+  if (!match.dateTime) {
+    gaps.push({
+      id: "match-schedule",
+      label: "경기 날짜/시간",
+      reason: "FIFA 일정 페이지는 연결되어 있지만 이 경기의 정확한 킥오프 시간이 아직 저장 데이터에 없습니다.",
+      requiredSource: "FIFA match schedule 또는 API-Football fixtures",
+      severity: "warning"
+    });
+  }
+
+  if (!match.stadium) {
+    gaps.push({
+      id: "match-stadium",
+      label: "경기장",
+      reason: "경기장 정보가 저장되지 않아 이동/체력 영향 계산을 보류합니다.",
+      requiredSource: "FIFA match schedule 또는 API-Football fixtures venue",
+      severity: "info"
+    });
+  }
+
+  if (page.matchCardEvents.length === 0) {
+    gaps.push({
+      id: "card-events",
+      label: "카드 이벤트 타임라인",
+      reason: missingCardEventReason,
+      requiredSource: "API-Football fixture events 또는 FIFA match report",
+      severity: "warning"
+    });
+  }
+
+  if (page.cardStatuses.some((item) => item.yellowCards === null && item.redCards === null)) {
+    gaps.push({
+      id: "player-card-totals",
+      label: "선수별 카드 누적",
+      reason: missingCardTotalReason,
+      requiredSource: "API-Football events, FIFA disciplinary report",
+      severity: "warning"
+    });
+  }
+
+  if (page.suspensionStatuses.some((item) => item.status === "확인 필요")) {
+    gaps.push({
+      id: "suspensions",
+      label: "출전 금지/징계",
+      reason: missingSuspensionReason,
+      requiredSource: "FIFA disciplinary notice, API-Football events",
+      severity: "warning"
+    });
+  }
+
+  if (page.injuryStatuses.some((item) => item.status === "확인 필요")) {
+    gaps.push({
+      id: "injuries",
+      label: "부상/출전 가능성",
+      reason: missingInjuryReason,
+      requiredSource: "API-Football injuries, 팀 공식 발표",
+      severity: "warning"
+    });
+  }
+
+  if (page.teamFitnessProfiles.some((item) => item.restDays === null || item.fatigueLevel === "확인 필요")) {
+    gaps.push({
+      id: "fitness",
+      label: "체력/휴식일",
+      reason: missingFitnessReason,
+      requiredSource: "fixtures venue/date, recent minutes, match events",
+      severity: "info"
+    });
+  }
+
+  if (page.expectedPlayers.length === 0) {
+    gaps.push({
+      id: "expected-players",
+      label: "경기별 예상 명단",
+      reason: "양 팀 선수단 또는 예상 라인업 데이터가 연결되지 않아 경기별 선수 상태를 만들 수 없습니다.",
+      requiredSource: "FIFA squad list, API-Football lineups, cached team roster",
+      severity: "critical"
+    });
+  }
+
+  return gaps;
+}
+
 function createKoreaAnalysis(match: MatchDetailData, homeTeam: TeamVerificationData | null, awayTeam: TeamVerificationData | null) {
   const isKoreaHome = match.homeTeamId === "korea-republic";
   const isKoreaAway = match.awayTeamId === "korea-republic";
@@ -228,7 +458,25 @@ function createKoreaAnalysis(match: MatchDetailData, homeTeam: TeamVerificationD
 export function createMatchPageData(match: MatchDetailData): MatchPageData {
   const homeTeam = match.homeTeamId ? getTeamVerificationDataById(match.homeTeamId) : null;
   const awayTeam = match.awayTeamId ? getTeamVerificationDataById(match.awayTeamId) : null;
-  const expectedPlayers = [...createExpectedPlayers(match, homeTeam), ...createExpectedPlayers(match, awayTeam)];
+  const homeExpectedPlayers = createExpectedPlayers(match, homeTeam);
+  const awayExpectedPlayers = createExpectedPlayers(match, awayTeam);
+  const expectedPlayers = [...homeExpectedPlayers, ...awayExpectedPlayers];
+  const cardStatuses = expectedPlayers.map(createPlayerCardStatus);
+  const suspensionStatuses = expectedPlayers.map(createSuspensionStatus);
+  const injuryStatuses = expectedPlayers.map(createInjuryStatus);
+  const matchCardEvents = createMatchCardEvents(match);
+  const teamFitnessProfiles = [
+    createTeamFitnessProfile(match, homeTeam, homeExpectedPlayers),
+    createTeamFitnessProfile(match, awayTeam, awayExpectedPlayers)
+  ].filter((profile): profile is TeamFitnessProfile => Boolean(profile));
+  const gapInput = {
+    expectedPlayers,
+    matchCardEvents,
+    cardStatuses,
+    suspensionStatuses,
+    injuryStatuses,
+    teamFitnessProfiles
+  };
 
   return {
     detail: match,
@@ -238,6 +486,12 @@ export function createMatchPageData(match: MatchDetailData): MatchPageData {
     suspendedPlayers: expectedPlayers.filter((player) => player.suspensionStatus === "징계 결장" || player.suspensionStatus === "출전 금지"),
     injuryPlayers: expectedPlayers.filter((player) => player.injuryStatus !== "정상" && player.injuryStatus !== "확인 필요"),
     cardRiskPlayers: expectedPlayers.filter((player) => player.suspensionStatus === "경고 누적 위험"),
+    cardStatuses,
+    matchCardEvents,
+    suspensionStatuses,
+    injuryStatuses,
+    teamFitnessProfiles,
+    dataGaps: createDataGaps(match, gapInput),
     prediction: {
       homeWinProbability: null,
       drawProbability: null,
