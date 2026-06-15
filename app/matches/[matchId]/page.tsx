@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Badge from "@/components/Badge";
 import FormationBoard from "@/components/FormationBoard";
+import StoredMatchRecollectionPanel from "@/components/StoredMatchRecollectionPanel";
 import { createMatchPageData, getAllMatchIds, getMatchDetailById } from "@/data/matchDetails";
 import { createMatchReview, createMatchReviewPlaceholder } from "@/lib/matchReviewService";
 import { sanitizeDisplayText } from "@/lib/textSanitizer";
@@ -100,6 +101,8 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         fitnessProfiles={pageData.teamFitnessProfiles}
         dataGaps={pageData.dataGaps}
       />
+
+      <StoredMatchRecollectionPanel matchId={match.matchId} />
 
       <section className="rounded border border-violet-300/25 bg-violet-400/10 p-5 shadow-panel">
         <div className="flex flex-wrap items-center gap-2">
@@ -345,9 +348,9 @@ function SourceList({ sources }: { sources: SourceMeta[] }) {
     <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
       <h2 className="text-xl font-black text-white">출처 목록과 업데이트 날짜</h2>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {sources.map((source) => (
+        {sources.map((source, index) => (
           <a
-            key={`${source.sourceName}-${source.sourceUrl}`}
+            key={`${source.sourceName}-${source.sourceUrl}-${index}`}
             href={source.sourceUrl ?? "#"}
             target="_blank"
             rel="noreferrer"

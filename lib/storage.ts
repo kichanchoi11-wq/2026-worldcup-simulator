@@ -24,6 +24,8 @@ export const storageKeys = {
   teamRiskProfilesData: "worldCupTeamRiskProfiles",
   koreaVsTeamPredictionsData: "koreaVsTeamPredictions",
   matchReviewsData: "worldCupMatchReviews",
+  adminRecollectionJobsData: "worldCupAdminRecollectionJobs",
+  adminRecollectionLastData: "worldCupAdminRecollectionLast",
   footballRefreshSnapshotData: "worldCupFootballRefreshSnapshot",
   lastAutoUpdateData: "worldCupLastAutoUpdate",
   lastManualRefreshData: "worldCupLastManualRefresh",
@@ -118,6 +120,8 @@ const migratableStorageKeys: StorageKey[] = [
   storageKeys.teamRiskProfilesData,
   storageKeys.koreaVsTeamPredictionsData,
   storageKeys.matchReviewsData,
+  storageKeys.adminRecollectionJobsData,
+  storageKeys.adminRecollectionLastData,
   storageKeys.footballRefreshSnapshotData,
   storageKeys.lastAutoUpdateData,
   storageKeys.lastManualRefreshData

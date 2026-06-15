@@ -3,6 +3,7 @@ import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import FormationBoard from "@/components/FormationBoard";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
+import StoredTeamRecollectionPanel from "@/components/StoredTeamRecollectionPanel";
 import TeamApiStatusPanel from "@/components/TeamApiStatusPanel";
 import TeamPlayerRoster from "@/components/TeamPlayerRoster";
 import { getTeamAnalysisBundle } from "@/lib/teamAnalysis";
@@ -84,6 +85,8 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
       <FootballDataRefreshPanel size="compact" />
 
       <TeamApiStatusPanel teamNameKo={team.nameKo} teamNameEn={detail.teamNameEn} teamCode={detail.teamCode} />
+
+      <StoredTeamRecollectionPanel teamId={teamId} />
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <h2 className="text-xl font-black text-white">기본 정보와 감독</h2>
@@ -411,9 +414,9 @@ function SourceList({ sources }: { sources: SourceMeta[] }) {
     <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
       <h2 className="text-xl font-black text-white">출처 목록</h2>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {sources.map((source) => (
+        {sources.map((source, index) => (
           <a
-            key={`${source.sourceName}-${source.sourceUrl}`}
+            key={`${source.sourceName}-${source.sourceUrl}-${index}`}
             href={source.sourceUrl ?? "#"}
             target="_blank"
             rel="noreferrer"

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import AdminRecollectionPanel from "@/components/AdminRecollectionPanel";
 import Badge from "@/components/Badge";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
 import { createMatchPageData, matchDetails } from "@/data/matchDetails";
@@ -392,23 +393,7 @@ export default function AdminReviewPanel() {
           <DebugItem label="경기 일정 확인 필요" value={`${matchDetailAudit.missingDates}개`} />
           <DebugItem label="경기장 확인 필요" value={`${matchDetailAudit.missingStadiums}개`} />
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {[
-            "감독 정보 재검증",
-            "포메이션 정보 재검증",
-            "전술 정보 재검증",
-            "예상 라인업 재검증",
-            "경기별 카드/징계/부상 정보 재검증",
-            "출처 없는 선수 데이터 숨기기",
-            "출처 없는 감독/전술/포메이션 숨기기",
-            "잘못된 데이터 비활성화"
-          ].map((item) => (
-            <div key={item} className="rounded border border-white/10 bg-pitch-900/80 p-3">
-              <p className="text-sm font-semibold text-white">{item}</p>
-              <Badge tone="확인 필요">대기</Badge>
-            </div>
-          ))}
-        </div>
+        <AdminRecollectionPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
       </section>
 
       <FootballDataRefreshPanel />
