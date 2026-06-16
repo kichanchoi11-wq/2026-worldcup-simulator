@@ -13,6 +13,11 @@ const allowedScopes = new Set<RecollectionScope>([
   "lineups",
   "risks",
   "match-reviews",
+  "gemini-coach-tactics",
+  "gemini-formations",
+  "gemini-risks",
+  "gemini-refresh-summary",
+  "gemini-all",
   "hide-unverified-players",
   "hide-unverified-staff",
   "disable-invalid-data"

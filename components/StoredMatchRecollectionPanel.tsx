@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
 import { readArrayStorage, storageKeys } from "@/lib/storage";
+import type { CardRecord } from "@/types/card";
 import type { MatchReview } from "@/types/match";
 import type { RecollectionJob } from "@/types/recollection";
 
@@ -10,6 +11,7 @@ type StoredMatchState = {
   review: MatchReview | null;
   latestJob: RecollectionJob | null;
   events: unknown[];
+  cardRecords: CardRecord[];
   injuries: unknown[];
   lineups: unknown[];
   statistics: unknown[];
@@ -42,11 +44,14 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
     const timer = window.setTimeout(() => {
       const reviews = readArrayStorage<MatchReview>(storageKeys.matchReviewsData);
       const jobs = readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData);
+      const allCardRecords = readArrayStorage<CardRecord>(storageKeys.apiFootballCardRecordsData);
+      const matchCardRecords = allCardRecords.filter((record) => record.matchId !== null && String(record.matchId) === String(matchId));
 
       setState({
         review: reviews.find((item) => String(item.matchId) === String(matchId)) ?? null,
-        latestJob: jobs.find((job) => ["risks", "lineups", "match-reviews", "all"].includes(job.scope)) ?? null,
+        latestJob: jobs.find((job) => ["risks", "lineups", "match-reviews", "gemini-risks", "gemini-all", "all"].includes(job.scope)) ?? null,
         events: readArrayStorage<unknown>(storageKeys.apiFootballEventsData),
+        cardRecords: matchCardRecords.length > 0 ? matchCardRecords : allCardRecords.slice(0, 12),
         injuries: readArrayStorage<unknown>(storageKeys.apiFootballInjuriesData),
         lineups: readArrayStorage<unknown>(storageKeys.apiFootballLineupsData),
         statistics: readArrayStorage<unknown>(storageKeys.apiFootballStatisticsData)
@@ -56,7 +61,7 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
     return () => window.clearTimeout(timer);
   }, [matchId]);
 
-  if (!state || (!state.latestJob && !state.review && state.events.length === 0 && state.injuries.length === 0 && state.lineups.length === 0)) {
+  if (!state || (!state.latestJob && !state.review && state.events.length === 0 && state.cardRecords.length === 0 && state.injuries.length === 0 && state.lineups.length === 0)) {
     return null;
   }
 
@@ -81,6 +86,7 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard label="API 이벤트" value={`${state.events.length}건 저장`} />
+        <InfoCard label="카드 현황" value={`${state.cardRecords.length}건 저장`} />
         <InfoCard label="API 부상" value={`${state.injuries.length}건 저장`} />
         <InfoCard label="API 라인업" value={`${state.lineups.length}건 저장`} />
         <InfoCard label="API 통계" value={`${state.statistics.length}건 저장`} />
@@ -90,6 +96,28 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
         <p className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4 text-sm leading-6 text-white/75">
           {state.review.matchSummary}
         </p>
+      ) : null}
+
+      {state.cardRecords.length > 0 ? (
+        <div className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={state.cardRecords.some((record) => record.sourceName === "API-Football") ? "success" : "warning"}>
+              {state.cardRecords.some((record) => record.sourceName === "API-Football") ? "API 카드 이벤트" : "카드 확인 대상"}
+            </Badge>
+          </div>
+          <ul className="mt-3 grid gap-2 text-sm text-white/70 md:grid-cols-2">
+            {state.cardRecords.slice(0, 8).map((record) => (
+              <li key={record.id} className="rounded border border-white/10 bg-white/[0.04] p-3">
+                <span className="font-black text-white">{record.playerName ?? "선수 확인 필요"}</span>
+                <span className="text-white/50"> · {record.teamName ?? "팀 확인 필요"} · {record.cardType}</span>
+                <p className="mt-1 text-xs leading-5 text-white/55">
+                  {record.minute !== null ? `${record.minute}분 · ` : ""}
+                  {record.reason ?? "공식 이벤트 동기화 후 실제 카드 사유가 표시됩니다."}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {state.latestJob?.message ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{state.latestJob.message}</p> : null}

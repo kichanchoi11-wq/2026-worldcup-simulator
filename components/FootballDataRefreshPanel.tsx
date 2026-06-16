@@ -74,6 +74,9 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     const fallbackResources = data?.fallbackResources;
     const teamAnalysisBundles = asArray(data?.teamAnalysisBundles);
     const matchReviews = asArray(data?.matchReviews);
+    const cardRecords = asArray(data?.cardRecords);
+    const geminiAnalyses = asArray(data?.geminiAnalyses);
+    const geminiStatus = data?.geminiStatus;
     const providerStatus = data?.providerStatus;
 
     writeStorage(storageKeys.footballRefreshSnapshotData, nextSnapshot);
@@ -96,6 +99,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     writeStorage(storageKeys.apiFootballCoachesData, asArray(fallbackResources?.coaches));
     writeStorage(storageKeys.apiFootballLineupsData, asArray(fallbackResources?.lineups));
     writeStorage(storageKeys.apiFootballEventsData, asArray(fallbackResources?.events));
+    writeStorage(storageKeys.apiFootballCardRecordsData, cardRecords);
     writeStorage(storageKeys.apiFootballInjuriesData, asArray(fallbackResources?.injuries));
     writeStorage(storageKeys.apiFootballStatisticsData, asArray(fallbackResources?.statistics));
     writeStorage(storageKeys.apiFootballPredictionsData, asArray(fallbackResources?.predictions));
@@ -104,6 +108,12 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
       writeStorage(storageKeys.apiFootballProviderStatusData, providerStatus);
       writeStorage(storageKeys.apiFootballUsageLogsData, asArray(providerStatus.usageLogs));
       writeStorage(storageKeys.apiFootballSyncLogsData, asArray(providerStatus.syncLogs));
+    }
+
+    writeStorage(storageKeys.geminiAnalysesData, geminiAnalyses);
+
+    if (geminiStatus) {
+      writeStorage(storageKeys.geminiStatusData, geminiStatus);
     }
 
     writeStorage(
@@ -169,6 +179,9 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   const apiTeamCount = asArray(data?.teams).length;
   const resourceSnapshotCount = asArray(data?.resourceSnapshots).length;
   const matchReviewCount = asArray(data?.matchReviews).length;
+  const cardRecordCount = asArray(data?.cardRecords).length;
+  const geminiAnalysisCount = asArray(data?.geminiAnalyses).length;
+  const geminiStatus = data?.geminiStatus;
   const results = asArray(snapshot?.results);
   const showRefreshButton = size === "full" && isAdminAuthenticated;
   const showAdminNotice = size === "full" && !isAdminAuthenticated;
@@ -214,7 +227,22 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
         <Status label="API 팀 정보" value={`${apiTeamCount}팀`} />
         <Status label="리소스 저장 구조" value={`${resourceSnapshotCount}종`} />
         <Status label="경기 리뷰" value={`${matchReviewCount}개`} />
+        <Status label="카드 현황 레코드" value={`${cardRecordCount}건`} />
+        <Status
+          label="Gemini 분석"
+          value={
+            geminiStatus
+              ? `${geminiAnalysisCount}건 · 호출 ${geminiStatus.callCount}회 · 캐시 ${geminiStatus.cacheHitCount}건`
+              : "아직 없음"
+          }
+        />
       </div>
+
+      {geminiStatus ? (
+        <p className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-3 text-sm font-semibold text-violet-50">
+          {geminiStatus.message}
+        </p>
+      ) : null}
 
       {apiUsage.warning ? (
         <p className="mt-4 rounded border border-amber-300/30 bg-amber-400/10 p-3 text-sm font-semibold text-amber-50">

@@ -1,5 +1,6 @@
 import type { MatchPageData, MatchReview } from "@/types/match";
 import { createMatchReview, createMatchReviewCacheKey, createRulesReviewMetadata } from "@/lib/matchReviewService";
+import type { GeminiAnalysisKind, GeminiAnalysisLog, GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
 
 type GeminiReviewJson = {
   matchSummary?: unknown;
@@ -29,6 +30,273 @@ export type GeminiMatchReviewResult = {
 const defaultGeminiModel = "gemini-2.0-flash";
 const geminiReviewCache = new Map<string, GeminiMatchReviewResult>();
 
+type GeminiState = {
+  analysisCache: Map<string, GeminiAnalysisRecord>;
+  callCount: number;
+  cacheHitCount: number;
+  failureCount: number;
+  lastCallAt: string | null;
+  lastSuccessAt: string | null;
+  logs: GeminiAnalysisLog[];
+};
+
+type GeminiAnalysisJson = {
+  summary?: unknown;
+  bulletPoints?: unknown;
+  dataGaps?: unknown;
+  sources?: unknown;
+};
+
+type GeminiAnalysisInput = {
+  kind: GeminiAnalysisKind;
+  title: string;
+  cacheKey: string;
+  instruction: string;
+  input: unknown;
+  fallbackSummary: string;
+  fallbackBullets?: string[];
+  fallbackDataGaps?: string[];
+  sources?: string[];
+};
+
+declare global {
+  var __worldCupGeminiAnalysisState: GeminiState | undefined;
+}
+
+function getGeminiState(): GeminiState {
+  if (!globalThis.__worldCupGeminiAnalysisState) {
+    globalThis.__worldCupGeminiAnalysisState = {
+      analysisCache: new Map(),
+      callCount: 0,
+      cacheHitCount: 0,
+      failureCount: 0,
+      lastCallAt: null,
+      lastSuccessAt: null,
+      logs: []
+    };
+  }
+
+  return globalThis.__worldCupGeminiAnalysisState;
+}
+
+function logGeminiEvent(event: Omit<GeminiAnalysisLog, "id" | "createdAt">) {
+  const state = getGeminiState();
+  state.logs = [
+    {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      ...event
+    },
+    ...state.logs
+  ].slice(0, 40);
+}
+
+function rememberGeminiFailure(kind: GeminiAnalysisKind, target: string, message: string) {
+  getGeminiState().failureCount += 1;
+  logGeminiEvent({
+    kind,
+    target,
+    status: "failed",
+    usedGemini: false,
+    usedCache: false,
+    message
+  });
+}
+
+function parseJsonObject<T>(text: string): T | null {
+  const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(trimmed.slice(start, end + 1)) as T;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+function createFallbackAnalysis(input: GeminiAnalysisInput, status: GeminiAnalysisRecord["status"], message: string): GeminiAnalysisRecord {
+  return {
+    id: `${input.kind}-${input.cacheKey}`,
+    kind: input.kind,
+    title: input.title,
+    status,
+    usedGemini: false,
+    usedCache: false,
+    generatedAt: new Date().toISOString(),
+    model: null,
+    summary: input.fallbackSummary,
+    bulletPoints: input.fallbackBullets ?? [],
+    dataGaps: input.fallbackDataGaps ?? [],
+    sources: input.sources ?? [],
+    message
+  };
+}
+
+function buildGenericGeminiPrompt(input: GeminiAnalysisInput) {
+  return [
+    "너는 2026 FIFA 월드컵 데이터 검증 보조 분석가다.",
+    "아래 JSON으로 제공된 API-Football, football-data.org fallback, 캐시, 정적 데이터 안에서만 분석한다.",
+    "없는 감독명, 선수명, 카드, 부상, 포메이션, 경기 이벤트를 새로 만들지 말고 데이터가 부족하면 '추가 확인 필요'라고 명확히 적는다.",
+    "모든 설명은 한국어로 작성한다.",
+    "마크다운 없이 JSON 객체 하나만 반환한다.",
+    "반환 필드: summary(string), bulletPoints(string[]), dataGaps(string[]), sources(string[]).",
+    `분석 대상: ${input.title}`,
+    input.instruction,
+    JSON.stringify(input.input)
+  ].join("\n\n");
+}
+
+function applyGeminiAnalysisPayload(input: GeminiAnalysisInput, payload: GeminiAnalysisJson, model: string): GeminiAnalysisRecord {
+  return {
+    id: `${input.kind}-${input.cacheKey}`,
+    kind: input.kind,
+    title: input.title,
+    status: "success",
+    usedGemini: true,
+    usedCache: false,
+    generatedAt: new Date().toISOString(),
+    model,
+    summary: asString(payload.summary, input.fallbackSummary),
+    bulletPoints: asStringArray(payload.bulletPoints, input.fallbackBullets ?? []),
+    dataGaps: asStringArray(payload.dataGaps, input.fallbackDataGaps ?? []),
+    sources: asStringArray(payload.sources, input.sources ?? []),
+    message: "Gemini API 분석을 완료했습니다."
+  };
+}
+
+export function getGeminiProviderStatus(): GeminiProviderStatus {
+  const state = getGeminiState();
+  const model = process.env.GEMINI_MODEL || defaultGeminiModel;
+  const enabled = Boolean(process.env.GEMINI_API_KEY);
+
+  return {
+    enabled,
+    model,
+    callCount: state.callCount,
+    cacheHitCount: state.cacheHitCount,
+    failureCount: state.failureCount,
+    lastCallAt: state.lastCallAt,
+    lastSuccessAt: state.lastSuccessAt,
+    logs: state.logs,
+    message: enabled
+      ? "Gemini API 키가 서버 환경변수에 있어 서버 Route에서만 호출합니다."
+      : "GEMINI_API_KEY가 없어 내부 규칙 기반 분석으로 fallback합니다."
+  };
+}
+
+export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<GeminiAnalysisRecord> {
+  const state = getGeminiState();
+  const cached = state.analysisCache.get(input.cacheKey);
+
+  if (cached) {
+    state.cacheHitCount += 1;
+    logGeminiEvent({
+      kind: input.kind,
+      target: input.title,
+      status: "cache",
+      usedGemini: cached.usedGemini,
+      usedCache: true,
+      message: "저장된 Gemini 분석 캐시를 사용했습니다."
+    });
+
+    return {
+      ...cached,
+      status: "cache",
+      usedCache: true,
+      message: "저장된 Gemini 분석 캐시를 사용했습니다."
+    };
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || defaultGeminiModel;
+
+  if (!apiKey) {
+    const fallback = createFallbackAnalysis(input, "fallback", "GEMINI_API_KEY가 없어 내부 규칙 기반 분석을 사용했습니다.");
+    state.analysisCache.set(input.cacheKey, fallback);
+    logGeminiEvent({
+      kind: input.kind,
+      target: input.title,
+      status: "fallback",
+      usedGemini: false,
+      usedCache: false,
+      message: fallback.message
+    });
+    return fallback;
+  }
+
+  state.callCount += 1;
+  state.lastCallAt = new Date().toISOString();
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: buildGenericGeminiPrompt(input) }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json"
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const fallback = createFallbackAnalysis(input, "fallback", `Gemini 응답 오류(${response.status})로 내부 규칙 기반 분석을 사용했습니다.`);
+      state.analysisCache.set(input.cacheKey, fallback);
+      rememberGeminiFailure(input.kind, input.title, fallback.message);
+      return fallback;
+    }
+
+    const data = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("\n") ?? "";
+    const parsed = parseJsonObject<GeminiAnalysisJson>(text);
+
+    if (!parsed) {
+      const fallback = createFallbackAnalysis(input, "fallback", "Gemini JSON 파싱에 실패해 내부 규칙 기반 분석을 사용했습니다.");
+      state.analysisCache.set(input.cacheKey, fallback);
+      rememberGeminiFailure(input.kind, input.title, fallback.message);
+      return fallback;
+    }
+
+    const result = applyGeminiAnalysisPayload(input, parsed, model);
+    state.analysisCache.set(input.cacheKey, result);
+    state.lastSuccessAt = result.generatedAt;
+    logGeminiEvent({
+      kind: input.kind,
+      target: input.title,
+      status: "success",
+      usedGemini: true,
+      usedCache: false,
+      message: result.message
+    });
+    return result;
+  } catch {
+    const fallback = createFallbackAnalysis(input, "fallback", "Gemini 호출 중 오류가 발생해 내부 규칙 기반 분석을 사용했습니다.");
+    state.analysisCache.set(input.cacheKey, fallback);
+    rememberGeminiFailure(input.kind, input.title, fallback.message);
+    return fallback;
+  }
+}
+
 function asString(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
@@ -43,24 +311,7 @@ function asStringArray(value: unknown, fallback: string[]) {
 }
 
 function parseGeminiJson(text: string): GeminiReviewJson | null {
-  const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-
-  try {
-    return JSON.parse(trimmed) as GeminiReviewJson;
-  } catch {
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(trimmed.slice(start, end + 1)) as GeminiReviewJson;
-      } catch {
-        return null;
-      }
-    }
-  }
-
-  return null;
+  return parseJsonObject<GeminiReviewJson>(text);
 }
 
 function compactPageData(pageData: MatchPageData, fallbackReview: MatchReview) {
@@ -217,6 +468,15 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
   const cached = geminiReviewCache.get(cacheKey);
 
   if (cached) {
+    getGeminiState().cacheHitCount += 1;
+    logGeminiEvent({
+      kind: "match-review",
+      target: cacheKey,
+      status: "cache",
+      usedGemini: cached.usedGemini,
+      usedCache: true,
+      message: "저장된 Gemini 경기 리뷰 캐시를 사용했습니다."
+    });
     return cached;
   }
 
@@ -232,8 +492,20 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       }
     };
     geminiReviewCache.set(cacheKey, result);
+    logGeminiEvent({
+      kind: "match-review",
+      target: cacheKey,
+      status: "fallback",
+      usedGemini: false,
+      usedCache: false,
+      message: result.message
+    });
     return result;
   }
+
+  const state = getGeminiState();
+  state.callCount += 1;
+  state.lastCallAt = new Date().toISOString();
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`, {
@@ -267,6 +539,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
         }
       };
       geminiReviewCache.set(cacheKey, result);
+      rememberGeminiFailure("match-review", cacheKey, result.message);
       return result;
     }
 
@@ -288,6 +561,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
         }
       };
       geminiReviewCache.set(cacheKey, result);
+      rememberGeminiFailure("match-review", cacheKey, result.message);
       return result;
     }
 
@@ -298,6 +572,15 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       review: applyGeminiReview(fallbackReview, parsed, pageData, model)
     };
     geminiReviewCache.set(cacheKey, result);
+    state.lastSuccessAt = result.review.reviewedAt;
+    logGeminiEvent({
+      kind: "match-review",
+      target: cacheKey,
+      status: "success",
+      usedGemini: true,
+      usedCache: false,
+      message: result.message
+    });
     return result;
   } catch {
     const result = {
@@ -311,6 +594,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       }
     };
     geminiReviewCache.set(cacheKey, result);
+    rememberGeminiFailure("match-review", cacheKey, result.message);
     return result;
   }
 }

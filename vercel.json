@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/update-football-data",
-      "schedule": "0 3 * * *"
+      "path": "/api/cron/auto-refresh",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

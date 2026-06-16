@@ -377,7 +377,7 @@ export const teamVerificationData: TeamVerificationData[] = worldCupGroupSlots.m
       teamName,
       coachName: profile.coachName,
       nationality: profile.coachNationality,
-      appointedDate: null,
+      appointedDate: profile.coachAppointedDate ?? null,
       tacticalNotes: `${profile.expectedFormation} 기반 ${profile.tacticalKeywords.join(", ")} 성향으로 정리했습니다.`,
       status: profile.coachName ? "신뢰도 높음" : "확인 필요",
       ...sourceMeta(primarySource)

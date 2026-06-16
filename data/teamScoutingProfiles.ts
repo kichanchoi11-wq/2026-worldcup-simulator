@@ -13,6 +13,7 @@ export type TeamScoutingProfile = {
   teamId: string;
   coachName: string | null;
   coachNationality: string | null;
+  coachAppointedDate?: string | null;
   confederation: string;
   powerIndex: string;
   recentAchievements: string[];
@@ -27,9 +28,11 @@ export type TeamScoutingProfile = {
   lastUpdated: string;
 };
 
-type Seed = Omit<TeamScoutingProfile, "sources" | "lastUpdated">;
+type Seed = Omit<TeamScoutingProfile, "sources" | "lastUpdated"> & {
+  extraSources?: SourceMeta[];
+};
 
-const lastChecked = "2026-06-14";
+const lastChecked = "2026-06-16";
 const fourFourTwoBase = "https://www.fourfourtwo.com/team";
 
 const fifaScheduleSource: SourceMeta = {
@@ -52,6 +55,26 @@ const squadReferenceSource: SourceMeta = {
   sourceNotes: "감독 및 최종 명단 교차 확인용 참고 자료"
 };
 
+const koreaManagerReferenceSource: SourceMeta = {
+  sourceName: "Current national team managers reference",
+  sourceUrl: "https://en.wikipedia.org/wiki/List_of_current_national_association_football_team_managers",
+  lastUpdated: lastChecked,
+  isOfficial: false,
+  confidence: "신뢰도 높음",
+  sourceLevel: "신뢰도 높음",
+  sourceNotes: "대한민국 현 감독 Hong Myung-bo와 2024-07-07 Yonhap 선임 보도, FIFA 팀 프로필 교차 확인용 참고 출처"
+};
+
+const koreaCzechiaMatchSource: SourceMeta = {
+  sourceName: "The Guardian South Korea 2-1 Czechia live report",
+  sourceUrl: "https://www.theguardian.com/football/live/2026/jun/12/fifa-world-cup-2026-live-south-korea-v-czechia-updates-kor-vs-cze-group-a-match-score-latest",
+  lastUpdated: "2026-06-12",
+  isOfficial: false,
+  confidence: "신뢰도 높음",
+  sourceLevel: "신뢰도 높음",
+  sourceNotes: "2026-06-12 체코전 선발 3-4-3, 득점 흐름, 카드 없음, 전술 메모 확인용"
+};
+
 function squadGuideSource(path: string): SourceMeta {
   const sourceUrl = path.startsWith("https://") ? path : `${fourFourTwoBase}/${path}`;
 
@@ -70,10 +93,10 @@ function player(name: string, position: PlayerPosition, club: string | null, rol
   return { name, position, club, role, note };
 }
 
-function makeProfile(seed: Seed): TeamScoutingProfile {
+function makeProfile({ extraSources = [], ...seed }: Seed): TeamScoutingProfile {
   return {
     ...seed,
-    sources: [fifaScheduleSource, squadGuideSource(seed.squadSourcePath), squadReferenceSource],
+    sources: [fifaScheduleSource, squadGuideSource(seed.squadSourcePath), squadReferenceSource, ...extraSources],
     lastUpdated: lastChecked
   };
 }
@@ -125,12 +148,13 @@ const seeds: Seed[] = [
     teamId: "korea-republic",
     coachName: "Hong Myung-bo",
     coachNationality: "South Korea",
+    coachAppointedDate: "2024-07-08",
     confederation: "AFC",
     powerIndex: "16강 경쟁권",
-    recentAchievements: ["아시아 최종예선 통과", "2022 월드컵 16강"],
-    recentFormation: "4-2-3-1",
-    expectedFormation: "4-2-3-1",
-    tacticalKeywords: ["손흥민 전환", "김민재 수비 리더십", "이강인 창의성", "중원 압박"],
+    recentAchievements: ["2026 월드컵 체코전 2-1 승리", "아시아 최종예선 무패 통과", "2022 월드컵 16강"],
+    recentFormation: "3-4-3",
+    expectedFormation: "3-4-3",
+    tacticalKeywords: ["3-4-3 윙백 운용", "손흥민 전환", "김민재 수비 리더십", "이강인 창의성", "황인범 빌드업"],
     players: [
       player("Son Heung-min", "FW", "Los Angeles FC", "핵심 선수", "역습 마무리와 왼쪽 하프스페이스 침투"),
       player("Kim Min-jae", "DF", "Bayern Munich", "핵심 선수", "수비 라인 리더와 전진 수비"),
@@ -138,9 +162,10 @@ const seeds: Seed[] = [
       player("Hwang In-beom", "MF", "Feyenoord", "핵심 선수", "전개 템포와 중원 압박 회피"),
       player("Hwang Hee-chan", "MF", "Wolverhampton Wanderers", "주목 선수", "전방 압박과 박스 침투")
     ],
-    strengths: ["유럽파 중심의 전환 속도", "센터백 리더십", "세트피스 킥 품질"],
-    weaknesses: ["풀백 뒷공간 노출", "중원 압박이 풀릴 때 수비 간격 확대"],
-    squadSourcePath: "south-korea-world-cup-2026-squad"
+    strengths: ["3백 전환 시 김민재 중심의 수비 안정", "황인범의 전개와 2선 침투", "손흥민·이강인의 순간 창의성"],
+    weaknesses: ["윙백 뒤 공간 노출", "상대 세트피스와 롱스로인 대응", "중원 압박이 풀릴 때 수비 간격 확대"],
+    squadSourcePath: "south-korea-world-cup-2026-squad",
+    extraSources: [koreaManagerReferenceSource, koreaCzechiaMatchSource]
   },
   {
     teamId: "czechia",

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Badge from "@/components/Badge";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
-import { readArrayStorage, storageKeys, writeStorage } from "@/lib/storage";
+import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/storage";
+import type { GeminiProviderStatus } from "@/types/gemini";
 import type { RecollectionDataPayload, RecollectionJob, RecollectionJobStatus, RecollectionResponse, RecollectionScope } from "@/types/recollection";
 import { recollectionJobDefinitions } from "@/types/recollection";
 
@@ -79,6 +80,9 @@ function compactRefreshSnapshot(data: RecollectionDataPayload): RecollectionData
       },
       teamAnalysisBundles: [],
       matchReviews: data.matchReviews,
+      cardRecords: data.cardRecords,
+      geminiAnalyses: data.geminiAnalyses,
+      geminiStatus: data.geminiStatus,
       providerStatus: data.providerStatus
     }
   };
@@ -100,6 +104,7 @@ function persistRecollectionPayload(data: RecollectionDataPayload) {
   writeIfAny(storageKeys.apiFootballCoachesData, data.apiCoaches.length > 0 ? data.apiCoaches : data.coaches);
   writeIfAny(storageKeys.apiFootballLineupsData, data.apiLineups.length > 0 ? data.apiLineups : data.lineups);
   writeIfAny(storageKeys.apiFootballEventsData, data.apiEvents.length > 0 ? data.apiEvents : data.events);
+  writeIfAny(storageKeys.apiFootballCardRecordsData, data.cardRecords);
   writeIfAny(storageKeys.apiFootballInjuriesData, data.apiInjuries.length > 0 ? data.apiInjuries : data.injuries);
   writeIfAny(storageKeys.apiFootballStatisticsData, data.apiStatistics.length > 0 ? data.apiStatistics : data.statistics);
   writeIfAny(storageKeys.apiFootballPredictionsData, data.apiPredictions.length > 0 ? data.apiPredictions : data.predictions);
@@ -108,6 +113,8 @@ function persistRecollectionPayload(data: RecollectionDataPayload) {
   writeIfAny(storageKeys.teamRiskProfilesData, data.teamRiskProfiles);
   writeIfAny(storageKeys.koreaVsTeamPredictionsData, data.koreaPredictions);
   writeIfAny(storageKeys.matchReviewsData, data.matchReviews);
+  writeIfAny(storageKeys.geminiAnalysesData, data.geminiAnalyses);
+  safeWriteStorage(storageKeys.geminiStatusData, data.geminiStatus);
 }
 
 function createRunningJob(scope: RecollectionScope, label: string): RecollectionJob {
@@ -138,12 +145,14 @@ function upsertJob(jobs: RecollectionJob[], nextJob: RecollectionJob) {
 export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
   const [jobs, setJobs] = useState<RecollectionJob[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [geminiStatus, setGeminiStatus] = useState<GeminiProviderStatus | null>(null);
   const { isAdminAuthenticated, isChecking } = useAdminAuth();
   const latestByScope = useMemo(() => new Map(jobs.map((job) => [job.scope, job])), [jobs]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setJobs(readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData));
+      setGeminiStatus(readStorage<GeminiProviderStatus | null>(storageKeys.geminiStatusData, null));
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -182,6 +191,7 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
       }
 
       persistRecollectionPayload(payload.data);
+      setGeminiStatus(payload.data.geminiStatus);
       safeWriteStorage(storageKeys.adminRecollectionLastData, {
         ok: payload.ok,
         status: payload.status,
@@ -245,6 +255,31 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
       ) : null}
 
       {message ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm font-semibold text-white/80">{message}</p> : null}
+
+      {geminiStatus ? (
+        <div className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={geminiStatus.enabled ? "success" : "warning"}>Gemini API {geminiStatus.enabled ? "사용 가능" : "fallback"}</Badge>
+            <Badge tone="neutral">모델 {geminiStatus.model}</Badge>
+          </div>
+          <div className="mt-3 grid gap-2 text-sm text-violet-50/80 md:grid-cols-4">
+            <span>호출 {geminiStatus.callCount}회</span>
+            <span>캐시 {geminiStatus.cacheHitCount}건</span>
+            <span>실패 {geminiStatus.failureCount}건</span>
+            <span>마지막 호출 {formatDate(geminiStatus.lastCallAt)}</span>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-violet-50/75">{geminiStatus.message}</p>
+          {geminiStatus.logs.length > 0 ? (
+            <ul className="mt-3 grid gap-2 text-xs text-violet-50/70 md:grid-cols-2">
+              {geminiStatus.logs.slice(0, 4).map((log) => (
+                <li key={log.id} className="rounded border border-white/10 bg-pitch-900/70 p-2">
+                  {log.target} · {log.status} · {formatDate(log.createdAt)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {recollectionJobDefinitions.map((definition) => {

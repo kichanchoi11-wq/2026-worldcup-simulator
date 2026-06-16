@@ -53,7 +53,9 @@ export default function StoredTeamRecollectionPanel({ teamId }: { teamId: string
         formation: formations.find((item) => item.teamId === teamId) ?? null,
         risk: risks.find((item) => item.teamId === teamId) ?? null,
         prediction: predictions.find((item) => item.opponentTeamId === teamId) ?? null,
-        latestJob: jobs.find((job) => ["coaches", "formations", "tactics", "risks", "all"].includes(job.scope)) ?? null,
+        latestJob: jobs.find((job) =>
+          ["coaches", "formations", "tactics", "risks", "gemini-coach-tactics", "gemini-formations", "gemini-risks", "gemini-all", "all"].includes(job.scope)
+        ) ?? null,
         resources
       });
     }, 0);

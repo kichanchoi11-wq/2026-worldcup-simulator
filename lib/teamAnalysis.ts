@@ -96,6 +96,10 @@ function fallbackFormationAlternatives(team: TeamVerificationData) {
   const keywordText = team.tactics.summary ?? "";
   const defaults = [recent, expected];
 
+  if (team.teamId === "korea-republic") {
+    defaults.push("4-2-3-1", "4-3-3");
+  }
+
   if (keywordText.includes("3백") || keywordText.includes("윙백")) {
     defaults.push("3-4-2-1", "3-5-2");
   }
@@ -243,6 +247,31 @@ export function getTeamFormationProfile(team: TeamVerificationData): TeamFormati
     sourceName: sourceName(team),
     sourceUrl: sourceUrl(team)
   };
+  const matchBasedFormations =
+    team.teamId === "korea-republic"
+      ? [
+          {
+            matchName: "대한민국 2-1 체코",
+            date: "2026-06-12",
+            opponent: "Czechia",
+            formation: "3-4-3",
+            result: "2-1 승",
+            sourceName: "The Guardian South Korea 2-1 Czechia live report",
+            sourceUrl:
+              "https://www.theguardian.com/football/live/2026/jun/12/fifa-world-cup-2026-live-south-korea-v-czechia-updates-kor-vs-cze-group-a-match-score-latest"
+          }
+        ]
+      : [
+          {
+            matchName: "최근 A매치·스쿼드 가이드 종합",
+            date: team.lastUpdated,
+            opponent: null,
+            formation: recentFormation ?? expectedFormation ?? "확인 필요",
+            result: null,
+            sourceName: source.sourceName,
+            sourceUrl: source.sourceUrl
+          }
+        ];
 
   return {
     teamId: team.teamId,
@@ -250,17 +279,7 @@ export function getTeamFormationProfile(team: TeamVerificationData): TeamFormati
     recentFormation,
     expectedFormation,
     alternativeFormations,
-    matchBasedFormations: [
-      {
-        matchName: "최근 A매치·스쿼드 가이드 종합",
-        date: team.lastUpdated,
-        opponent: null,
-        formation: recentFormation ?? expectedFormation ?? "확인 필요",
-        result: null,
-        sourceName: source.sourceName,
-        sourceUrl: source.sourceUrl
-      }
-    ],
+    matchBasedFormations,
     formationNotes: [
       "FIFA 공식 스쿼드/감독 정보와 신뢰 가능한 스쿼드 가이드를 기준으로 재검토했으며, 포메이션은 최근 운용·예상 운용·대체 운용을 분리해 표시합니다.",
       "최근 실제 경기 라인업과 공개 스쿼드 자료가 모두 확정되면 경기별 포메이션 이력을 더 촘촘하게 갱신합니다.",

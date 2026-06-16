@@ -1,6 +1,8 @@
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballResourceSnapshot, ApiFootballTeamRecord, FootballMatch, StandingRow } from "@/types/football";
 import type { MatchReview } from "@/types/match";
+import type { CardRecord } from "@/types/card";
+import type { GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
 import type { CoachTacticalProfile, KoreaVsTeamPrediction, PlayerData, PlayerStatus, TeamFormationProfile, TeamRiskProfile } from "@/types/team";
 
 export type RecollectionScope =
@@ -11,6 +13,11 @@ export type RecollectionScope =
   | "lineups"
   | "risks"
   | "match-reviews"
+  | "gemini-coach-tactics"
+  | "gemini-formations"
+  | "gemini-risks"
+  | "gemini-refresh-summary"
+  | "gemini-all"
   | "hide-unverified-players"
   | "hide-unverified-staff"
   | "disable-invalid-data";
@@ -72,6 +79,9 @@ export type RecollectionDataPayload = {
   apiInjuries: unknown[];
   apiStatistics: unknown[];
   apiPredictions: unknown[];
+  cardRecords: CardRecord[];
+  geminiAnalyses: GeminiAnalysisRecord[];
+  geminiStatus: GeminiProviderStatus;
   teamTactics: CoachTacticalProfile[];
   teamFormations: TeamFormationProfile[];
   teamRiskProfiles: TeamRiskProfile[];
@@ -114,6 +124,31 @@ export const recollectionJobDefinitions: RecollectionJobDefinition[] = [
     scope: "risks",
     label: "경기별 카드/징계/부상 정보 재검증",
     description: "events, injuries, 정적 위험 프로필을 다시 수집합니다."
+  },
+  {
+    scope: "gemini-coach-tactics",
+    label: "Gemini 감독 전술 재분석",
+    description: "서버 Route에서 Gemini로 감독 전술 요약을 생성하고 호출 로그를 저장합니다."
+  },
+  {
+    scope: "gemini-formations",
+    label: "Gemini 포메이션 재분석",
+    description: "최근/예상/대체 포메이션 설명을 Gemini 또는 내부 fallback으로 다시 생성합니다."
+  },
+  {
+    scope: "gemini-risks",
+    label: "Gemini 카드·부상·징계 설명",
+    description: "카드, 부상, 징계, 체력 데이터의 결측 사유와 확인 대상을 분석합니다."
+  },
+  {
+    scope: "gemini-refresh-summary",
+    label: "Gemini 새로고침 결과 요약",
+    description: "최근 새로고침 결과, API 호출 제한, 캐시/fallback 사용 상태를 요약합니다."
+  },
+  {
+    scope: "gemini-all",
+    label: "전체 Gemini 분석 재실행",
+    description: "감독 전술, 포메이션, 리스크, 새로고침 요약을 한 번에 다시 생성합니다."
   },
   {
     scope: "hide-unverified-players",

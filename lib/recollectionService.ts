@@ -1,11 +1,14 @@
 import { randomUUID } from "crypto";
 import { createMatchPageData, matchDetails } from "@/data/matchDetails";
 import { refreshFootballData } from "@/lib/autoUpdateService";
+import { buildCardRecords } from "@/lib/cardRecordService";
 import { fetchFootballData, getFootballProviderStatus, normalizeMatches, normalizeStandings, normalizeTeams } from "@/lib/footballApi";
-import { createGeminiMatchReview } from "@/lib/geminiAnalysisService";
+import { createGeminiAnalysis, createGeminiMatchReview, getGeminiProviderStatus } from "@/lib/geminiAnalysisService";
 import { createMatchReview } from "@/lib/matchReviewService";
 import { getAdvancedTeamDataAudit, getAllTeamAnalysisBundles, getBrokenPlayerNameAudit } from "@/lib/teamAnalysis";
 import type { ApiFootballResourceSnapshot, ApiFootballTrackedResource, FootballApiEnvelope, FootballMatch } from "@/types/football";
+import type { CardRecord } from "@/types/card";
+import type { GeminiAnalysisRecord } from "@/types/gemini";
 import type {
   RecollectionDataPayload,
   RecollectionJob,
@@ -23,6 +26,22 @@ type DirectResource = {
 
 const maxFixtureSamples = 3;
 const maxTeamSamples = 4;
+
+function needsRiskResources(scope: RecollectionScope) {
+  return scope === "risks" || scope === "gemini-risks" || scope === "gemini-all" || scope === "all";
+}
+
+function needsLineupResources(scope: RecollectionScope) {
+  return scope === "lineups" || scope === "formations" || scope === "gemini-formations" || scope === "gemini-all" || scope === "all";
+}
+
+function needsTacticResources(scope: RecollectionScope) {
+  return scope === "tactics" || scope === "formations" || scope === "gemini-coach-tactics" || scope === "gemini-formations" || scope === "gemini-all" || scope === "all";
+}
+
+function needsCoachResources(scope: RecollectionScope) {
+  return scope === "coaches" || scope === "tactics" || scope === "gemini-coach-tactics" || scope === "gemini-all" || scope === "hide-unverified-staff" || scope === "all";
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -153,15 +172,15 @@ async function collectFixtureResources(matches: FootballMatch[], scope: Recollec
       }
     });
 
-    if (scope === "risks") {
+    if (needsRiskResources(scope)) {
       return [skipped("events", "카드/징계 이벤트"), skipped("injuries", "부상 정보")];
     }
 
-    if (scope === "lineups" || scope === "formations") {
+    if (needsLineupResources(scope)) {
       return [skipped("lineups", "경기별 라인업"), skipped("statistics", "경기 통계")];
     }
 
-    if (scope === "tactics") {
+    if (needsTacticResources(scope)) {
       return [skipped("statistics", "전술 참고 경기 통계")];
     }
 
@@ -171,16 +190,16 @@ async function collectFixtureResources(matches: FootballMatch[], scope: Recollec
   const resources: DirectResource[] = [];
 
   for (const fixtureId of fixtureIds) {
-    if (scope === "risks" || scope === "all") {
+    if (needsRiskResources(scope)) {
       resources.push(await collectResource(`/api-football/fixtures/events?fixture=${fixtureId}`, "events", `카드/징계 이벤트 ${fixtureId}`));
       resources.push(await collectResource(`/api-football/injuries?fixture=${fixtureId}`, "injuries", `부상 정보 ${fixtureId}`));
     }
 
-    if (scope === "lineups" || scope === "formations" || scope === "all") {
+    if (needsLineupResources(scope)) {
       resources.push(await collectResource(`/api-football/fixtures/lineups?fixture=${fixtureId}`, "lineups", `경기별 라인업 ${fixtureId}`));
     }
 
-    if (scope === "formations" || scope === "tactics" || scope === "all") {
+    if (needsTacticResources(scope)) {
       resources.push(await collectResource(`/api-football/fixtures/statistics?fixture=${fixtureId}`, "statistics", `경기 통계 ${fixtureId}`));
     }
 
@@ -201,7 +220,7 @@ async function collectTeamResources(teamIds: Array<number | null>, scope: Recoll
     resources.push(await collectResource(`/api-football/players?league=${league}&season=${season}&page=1`, "players", "선수 명단 API 표본"));
   }
 
-  if (scope === "coaches" || scope === "tactics" || scope === "hide-unverified-staff" || scope === "all") {
+  if (needsCoachResources(scope)) {
     const ids = teamIds.filter((id): id is number => typeof id === "number").slice(0, maxTeamSamples);
 
     if (ids.length === 0) {
@@ -240,7 +259,7 @@ async function collectTeamResources(teamIds: Array<number | null>, scope: Recoll
 }
 
 async function collectGeminiReviews(scope: RecollectionScope) {
-  if (scope !== "match-reviews" && scope !== "all") {
+  if (scope !== "match-reviews" && scope !== "gemini-all" && scope !== "all") {
     return {
       reviews: [] as NonNullable<ReturnType<typeof createMatchReview>>[],
       result: null as RecollectionResourceResult | null
@@ -298,6 +317,128 @@ async function collectGeminiReviews(scope: RecollectionScope) {
   };
 }
 
+async function collectAdminGeminiAnalyses(input: {
+  scope: RecollectionScope;
+  refreshSnapshot: Awaited<ReturnType<typeof refreshFootballData>>;
+  directResources: DirectResource[];
+  teamAnalysisBundles: ReturnType<typeof getAllTeamAnalysisBundles>;
+  cardRecords: CardRecord[];
+}): Promise<GeminiAnalysisRecord[]> {
+  const { scope, refreshSnapshot, directResources, teamAnalysisBundles, cardRecords } = input;
+  const korea = teamAnalysisBundles.find((bundle) => bundle.teamId === "korea-republic") ?? teamAnalysisBundles[0];
+  const timestampKey = nowIso().slice(0, 16);
+  const resourceContext = {
+    mode: refreshSnapshot.mode,
+    refreshedAt: refreshSnapshot.refreshedAt,
+    providerStatus: getFootballProviderStatus(),
+    resourceSnapshots: refreshSnapshot.data.resourceSnapshots.map((snapshot) => ({
+      resource: snapshot.resource,
+      label: snapshot.label,
+      source: snapshot.source,
+      count: snapshot.count,
+      dataQuality: snapshot.dataQuality,
+      message: snapshot.message
+    })),
+    directResults: directResources.map((resource) => resource.result),
+    cardRecords: cardRecords.slice(0, 40)
+  };
+  const analyses: Array<Promise<GeminiAnalysisRecord>> = [];
+
+  if (scope === "gemini-refresh-summary" || scope === "gemini-all" || scope === "all") {
+    analyses.push(
+      createGeminiAnalysis({
+        kind: "refresh-summary",
+        title: "관리자 새로고침 결과 요약",
+        cacheKey: `admin-refresh-summary-${scope}-${timestampKey}`,
+        instruction: "관리자 재수집 결과를 성공/부분 성공/실패/건너뜀으로 나누어 요약하고, fallback 사용 이유를 설명한다.",
+        input: resourceContext,
+        fallbackSummary: "관리자 재수집은 서버 Route에서 실행됐고, 외부 API 실패 시 캐시와 정적 기본 데이터로 보완했습니다.",
+        fallbackBullets: [
+          `리소스 결과 ${directResources.length}건`,
+          `카드 레코드 ${cardRecords.length}건`,
+          `Gemini 상태: ${getGeminiProviderStatus().message}`
+        ],
+        fallbackDataGaps: ["Gemini API 응답이 없으면 내부 규칙 기반 요약으로 표시합니다."],
+        sources: ["API-Football", "football-data.org", "cache", "static"]
+      })
+    );
+  }
+
+  if (korea && (scope === "gemini-coach-tactics" || scope === "gemini-all" || scope === "all")) {
+    analyses.push(
+      createGeminiAnalysis({
+        kind: "coach-tactics",
+        title: "대한민국 감독 전술 관리자 재분석",
+        cacheKey: `admin-korea-coach-tactics-${scope}-${timestampKey}`,
+        instruction:
+          "대한민국 홍명보 감독 전술을 데이터 근거 안에서만 다시 설명한다. 부임 시기, 최근 3-4-3 운용, 4-2-3-1 대체 운용, 강점/약점을 분리한다.",
+        input: {
+          koreaCoach: korea.coachTacticalProfile,
+          koreaFormation: korea.formationProfile,
+          resources: resourceContext
+        },
+        fallbackSummary: "홍명보 감독 정보는 2024-07-08 부임, 최근 3-4-3 운용, 4-2-3-1 대체 운용 기준으로 보수 표시합니다.",
+        fallbackBullets: [
+          "최근 실제 운용: 2026-06-12 체코전 3-4-3",
+          "예상/대체 운용: 3-4-3과 4-2-3-1 병행",
+          "전술 핵심: 김민재 중심 수비 안정, 황인범 전개, 손흥민·이강인 전환/창의성"
+        ],
+        fallbackDataGaps: ["API-Football lineups가 없는 경기는 공식 라인업 확인 전까지 추정 표시합니다."],
+        sources: korea.coachTacticalProfile.sources.map((source) => source.sourceName ?? "출처 확인 필요")
+      })
+    );
+  }
+
+  if (korea && (scope === "gemini-formations" || scope === "gemini-all" || scope === "all")) {
+    analyses.push(
+      createGeminiAnalysis({
+        kind: "formation",
+        title: "대한민국 포메이션 관리자 재분석",
+        cacheKey: `admin-korea-formation-${scope}-${timestampKey}`,
+        instruction: "최근 실제 포메이션과 예상 포메이션을 분리하고, 불확실한 항목은 추가 확인 필요로 남긴다.",
+        input: {
+          koreaFormation: korea.formationProfile,
+          koreaCoach: korea.coachTacticalProfile,
+          lineups: directResources.filter((resource) => resource.snapshot.resource === "lineups").flatMap((resource) => resource.items)
+        },
+        fallbackSummary: "대한민국 포메이션은 최근 3-4-3, 예상 3-4-3/4-2-3-1 병행으로 표시합니다.",
+        fallbackBullets: [
+          "최근 실제: 3-4-3",
+          "예상 기본: 3-4-3",
+          "대체: 4-2-3-1, 4-3-3"
+        ],
+        fallbackDataGaps: ["fixture lineups 응답이 없으면 최근 경기 기사/정적 검증 데이터를 사용합니다."],
+        sources: korea.formationProfile.sources.map((source) => source.sourceName ?? "출처 확인 필요")
+      })
+    );
+  }
+
+  if (scope === "gemini-risks" || scope === "gemini-all" || scope === "all") {
+    analyses.push(
+      createGeminiAnalysis({
+        kind: "risk-summary",
+        title: "관리자 카드·부상·징계 설명",
+        cacheKey: `admin-risk-summary-${scope}-${timestampKey}`,
+        instruction: "API-Football events/injuries와 fallback 카드 레코드를 구분해 리스크 설명을 만든다.",
+        input: {
+          ...resourceContext,
+          riskProfiles: teamAnalysisBundles.slice(0, 12).map((bundle) => bundle.riskProfile)
+        },
+        fallbackSummary: "카드·부상·징계·체력은 실제 이벤트가 없을 때도 확인 대상자와 결측 사유를 표시합니다.",
+        fallbackBullets: [
+          "API-Football Card 이벤트가 있으면 실제 카드로 우선 표시",
+          "이벤트가 없으면 정적 확인 대상 레코드로 빈 화면 방지",
+          "부상/징계/체력은 공식 발표 전까지 확인 필요 상태 유지"
+        ],
+        fallbackDataGaps: ["fixtures/events, injuries, lineups 응답이 들어오면 실제 값으로 교체됩니다."],
+        sources: ["API-Football events", "API-Football injuries", "static risk profiles"]
+      })
+    );
+  }
+
+  return Promise.all(analyses);
+}
+
 function deriveJobStatus(results: RecollectionResourceResult[], updatedCount: number): RecollectionJobStatus {
   const failedCount = results.filter((result) => result.status === "failed").length;
   const skippedCount = results.filter((result) => result.status === "skipped").length;
@@ -347,6 +488,11 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
     lineups: "예상 라인업 재검증",
     risks: "경기별 카드/징계/부상 정보 재검증",
     "match-reviews": "끝난 경기 리뷰 재검증",
+    "gemini-coach-tactics": "Gemini 감독 전술 재분석",
+    "gemini-formations": "Gemini 포메이션 재분석",
+    "gemini-risks": "Gemini 카드/부상/징계 설명",
+    "gemini-refresh-summary": "Gemini 새로고침 결과 요약",
+    "gemini-all": "전체 Gemini 분석 재실행",
     "hide-unverified-players": "출처 없는 선수 데이터 숨기기",
     "hide-unverified-staff": "출처 없는 감독/전술/포메이션 숨기기",
     "disable-invalid-data": "잘못된 데이터 비활성화"
@@ -379,7 +525,6 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
     source: "server-refresh",
     message: result.message
   }));
-  const results = [...baseResults, ...directResults, ...(geminiReviews.result ? [geminiReviews.result] : [])];
   const apiPlayers = directResources.filter((resource) => resource.snapshot.resource === "players").flatMap((resource) => resource.items);
   const apiCoaches = directResources.filter((resource) => resource.snapshot.resource === "coaches").flatMap((resource) => resource.items);
   const apiLineups = directResources.filter((resource) => resource.snapshot.resource === "lineups").flatMap((resource) => resource.items);
@@ -389,6 +534,31 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
   const apiPredictions = directResources.filter((resource) => resource.snapshot.resource === "predictions").flatMap((resource) => resource.items);
   const fallbackResources = refreshSnapshot.data.fallbackResources;
   const matchReviews = geminiReviews.reviews.length > 0 ? geminiReviews.reviews : refreshSnapshot.data.matchReviews;
+  const cardRecords = buildCardRecords({
+    apiEvents: apiEvents.length > 0 ? apiEvents : fallbackResources.events,
+    matches,
+    refreshedAt: nowIso()
+  });
+  const adminGeminiAnalyses = await collectAdminGeminiAnalyses({
+    scope,
+    refreshSnapshot,
+    directResources,
+    teamAnalysisBundles,
+    cardRecords
+  });
+  const geminiAnalyses = [...refreshSnapshot.data.geminiAnalyses, ...adminGeminiAnalyses];
+  const geminiStatus = getGeminiProviderStatus();
+  const geminiAnalysisResult: RecollectionResourceResult = {
+    id: `gemini-analysis-${scope}`,
+    label: "Gemini 분석 실행",
+    status: geminiAnalyses.some((analysis) => analysis.usedGemini) ? "success" : geminiAnalyses.length > 0 ? "partial" : "skipped",
+    count: geminiAnalyses.length,
+    source: geminiStatus.enabled ? "gemini" : "fallback",
+    message: geminiStatus.enabled
+      ? `Gemini 분석 ${geminiAnalyses.length}건 처리, 호출 ${geminiStatus.callCount}회, 캐시 ${geminiStatus.cacheHitCount}건입니다.`
+      : "GEMINI_API_KEY가 없어 내부 규칙 기반 분석으로 fallback했습니다."
+  };
+  const results = [...baseResults, ...directResults, ...(geminiReviews.result ? [geminiReviews.result] : []), geminiAnalysisResult];
   const updatedCount =
     matches.length +
     standings.length +
@@ -403,6 +573,8 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
     apiInjuries.length +
     apiStatistics.length +
     apiPredictions.length +
+    cardRecords.length +
+    geminiAnalyses.length +
     teamAnalysisBundles.length * 4 +
     matchReviews.length;
   const failedCount = results.filter((result) => result.status === "failed").length;
@@ -412,7 +584,7 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
   const sourcesUsed = uniqueStrings([
     ...resourceSnapshots.map((snapshot) => snapshot.source),
     ...resourceSnapshots.map((snapshot) => snapshot.source === "static" ? "정적 fallback 데이터" : null),
-    geminiReviews.result ? "Gemini API/fallback" : null
+    geminiReviews.result || geminiAnalyses.length > 0 ? "Gemini API/fallback" : null
   ]);
   const message = scopeMessage(status, label, updatedCount, failedCount, skippedCount);
   const job: RecollectionJob = {
@@ -438,6 +610,9 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
         ...refreshSnapshot.data,
         resourceSnapshots,
         matchReviews,
+        cardRecords,
+        geminiAnalyses,
+        geminiStatus,
         providerStatus: getFootballProviderStatus()
       }
     },
@@ -460,6 +635,9 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
     apiInjuries,
     apiStatistics,
     apiPredictions,
+    cardRecords,
+    geminiAnalyses,
+    geminiStatus,
     teamTactics: teamAnalysisBundles.map((item) => item.coachTacticalProfile),
     teamFormations: teamAnalysisBundles.map((item) => item.formationProfile),
     teamRiskProfiles: teamAnalysisBundles.map((item) => item.riskProfile),
