@@ -43,7 +43,7 @@ type ResourceFetchResult = {
   diagnostic: PredictionResourceDiagnostic;
 };
 
-const detailFixtureLimit = Number(process.env.API_FOOTBALL_PREDICTION_DETAIL_FIXTURE_LIMIT ?? 6);
+const detailFixtureLimit = Number(process.env.API_FOOTBALL_PREDICTION_DETAIL_FIXTURE_LIMIT ?? 1);
 
 function apiResponseRows(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
