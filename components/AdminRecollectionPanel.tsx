@@ -261,6 +261,7 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={geminiStatus.enabled ? "success" : "warning"}>Gemini API {geminiStatus.enabled ? "사용 가능" : "fallback"}</Badge>
             <Badge tone="neutral">모델 {geminiStatus.model}</Badge>
+            <Badge tone="neutral">Fallback {geminiStatus.fallbackModel}</Badge>
           </div>
           <div className="mt-3 grid gap-2 text-sm text-violet-50/80 md:grid-cols-4">
             <span>호출 {geminiStatus.callCount}회</span>

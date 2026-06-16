@@ -10,6 +10,7 @@ import {
 import { getGroupMatchDetails, matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
 import { getThirdPlaceNotice, isThirdPlaceSeedAllowed } from "@/lib/bracket";
+import { predictionPairKey, type PredictionDataInputs } from "@/lib/predictionDataInputs";
 import { getBaseGroups } from "@/lib/scenario";
 import type { BracketMatch, BracketSlot, BracketTeam, TournamentValidation } from "@/types/bracket";
 import type { SourceMeta, TeamGroup } from "@/types/football";
@@ -33,7 +34,7 @@ type MutableStanding = Omit<PredictedTournamentStanding, "rank" | "qualification
 type OutcomeMap = Record<number, { winner: PredictionTeamSnapshot; loser: PredictionTeamSnapshot }>;
 type SeedMap = Record<string, PredictionTeamSnapshot>;
 
-const modelVersion = "internal-full-tournament-v1";
+const modelVersion = "api-football-full-tournament-v2";
 const groupIds = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"] as const;
 
 const confederationBonus: Record<string, number> = {
@@ -398,6 +399,14 @@ function createExpectedScore(
   return { teamA: scoreA, teamB: scoreB };
 }
 
+function actualResultForMatch(input: PredictionDataInputs | null | undefined, teamA: PredictionTeamSnapshot, teamB: PredictionTeamSnapshot) {
+  if (!input) {
+    return null;
+  }
+
+  return input.actualResultsByPair[predictionPairKey(teamA.id, teamB.id)] ?? null;
+}
+
 function createMatchPrediction({
   matchId,
   round: stage,
@@ -405,7 +414,8 @@ function createMatchPrediction({
   teamA,
   teamB,
   allowDraw,
-  bracketSeedNote
+  bracketSeedNote,
+  dataInputs
 }: {
   matchId: string | number;
   round: MatchPrediction["round"];
@@ -414,7 +424,9 @@ function createMatchPrediction({
   teamB: PredictionTeamSnapshot;
   allowDraw: boolean;
   bracketSeedNote: string | null;
+  dataInputs?: PredictionDataInputs | null;
 }): MatchPrediction {
+  const actualResult = actualResultForMatch(dataInputs, teamA, teamB);
   const delta = teamA.strengthScore - teamB.strengthScore;
   const drawProbability = allowDraw ? clamp(round(28 - Math.abs(delta) * 0.42), 14, 30) : null;
   const remainingProbability = 100 - (drawProbability ?? 0);
@@ -432,12 +444,21 @@ function createMatchPrediction({
       : teamAWin >= teamBWin
         ? teamA
         : teamB;
-  const expectedScore = createExpectedScore(teamA, teamB, predictedWinner, allowDraw);
+  const actualWinner =
+    actualResult && actualResult.homeScore !== actualResult.awayScore
+      ? actualResult.homeScore > actualResult.awayScore
+        ? teamA
+        : teamB
+      : null;
+  const expectedScore = actualResult
+    ? { teamA: actualResult.homeScore, teamB: actualResult.awayScore }
+    : createExpectedScore(teamA, teamB, predictedWinner, allowDraw);
   const scoreGap = Math.abs(teamA.strengthScore - teamB.strengthScore);
   const confidence = combineConfidence([
     teamA.confidence,
     teamB.confidence,
     teamA.dataGaps.length > 0 || teamB.dataGaps.length > 0 ? "참고 자료" : "신뢰도 높음",
+    actualResult ? "공식 확인" : "참고 자료",
     stage === "조별리그" ? "참고 자료" : "추정"
   ]);
   const closeGame = scoreGap <= 6;
@@ -460,22 +481,25 @@ function createMatchPrediction({
       `${teamB.nameKo}: ${teamB.formation ?? "포메이션 확인 필요"} · ${teamB.keyPlayers.slice(0, 2).join(", ") || "핵심 선수 확인 필요"}`,
       teamA.strengths[0] ? `${teamA.nameKo} 강점: ${teamA.strengths[0]}` : null,
       teamB.strengths[0] ? `${teamB.nameKo} 강점: ${teamB.strengths[0]}` : null,
-      closeGame ? "전력차가 작아 세트피스와 카드 변수가 크게 작용할 수 있음" : null
+      closeGame ? "전력차가 작아 세트피스와 카드 변수가 크게 작용할 수 있음" : null,
+      actualResult ? `API-Football 실제 결과 반영: ${actualResult.homeTeamName} ${actualResult.homeScore}-${actualResult.awayScore} ${actualResult.awayTeamName}` : null
     ]).slice(0, 5),
     riskFactors: uniqueStrings([
       ...teamA.dataGaps,
       ...teamB.dataGaps,
+      ...(dataInputs?.diagnostics.risk.fallbackNotes ?? []),
       teamA.weaknesses[0] ? `${teamA.nameKo} 위험: ${teamA.weaknesses[0]}` : null,
       teamB.weaknesses[0] ? `${teamB.nameKo} 위험: ${teamB.weaknesses[0]}` : null
     ]).slice(0, 5),
     uncertaintyFactors: uniqueStrings([
       "확정 선발, 부상, 징계, 카드 현황은 킥오프 전 공식 발표로 재확인 필요",
       "경기 날짜·장소·휴식일 데이터가 모두 확정되면 피로도 보정 가능",
+      ...(dataInputs?.diagnostics.missingData ?? []),
       bracketSeedNote
     ]).slice(0, 4),
     confidence,
     sources: sourceSummaryForTeams(teamA, teamB).slice(0, 6),
-    predictedWinner,
+    predictedWinner: actualResult ? actualWinner : predictedWinner,
     bracketSeedNote
   };
 }
@@ -553,7 +577,7 @@ function qualificationProbability(rank: number, standing: MutableStanding) {
   return clamp(round(baseByRank + pointBonus), 5, 98);
 }
 
-function createGroupPredictions(groups: TeamGroup[]) {
+function createGroupPredictions(groups: TeamGroup[], dataInputs?: PredictionDataInputs | null) {
   const teamsById = new Map(teamVerificationData.map((team) => [team.teamId, team]));
   const groupPredictions: GroupPrediction[] = [];
 
@@ -579,7 +603,8 @@ function createGroupPredictions(groups: TeamGroup[]) {
         teamA,
         teamB,
         allowDraw: true,
-        bracketSeedNote: null
+        bracketSeedNote: null,
+        dataInputs
       });
       const standingA = standings.get(teamA.id);
       const standingB = standings.get(teamB.id);
@@ -761,7 +786,8 @@ function simulateSlot(
   slot: BracketSlot,
   seedMap: SeedMap,
   outcomes: OutcomeMap,
-  thirdPlaceAssignments: Record<number, string>
+  thirdPlaceAssignments: Record<number, string>,
+  dataInputs?: PredictionDataInputs | null
 ) {
   const teamA =
     resolveSeed(slot.teamASeed, slot, seedMap, outcomes, thirdPlaceAssignments) ?? createPlaceholderTeam(slot.teamASeed);
@@ -774,7 +800,8 @@ function simulateSlot(
     teamA,
     teamB,
     allowDraw: false,
-    bracketSeedNote: seedNoteForSlot(slot, thirdPlaceAssignments)
+    bracketSeedNote: seedNoteForSlot(slot, thirdPlaceAssignments),
+    dataInputs
   });
   const winner = prediction.predictedWinner ?? (prediction.probabilities.teamAWin >= prediction.probabilities.teamBWin ? teamA : teamB);
   const loser = winner.id === teamA.id ? teamB : teamA;
@@ -794,22 +821,53 @@ function simulateRound(
   seedMap: SeedMap,
   outcomes: OutcomeMap,
   thirdPlaceAssignments: Record<number, string>,
-  notice: string | null = null
+  notice: string | null = null,
+  dataInputs?: PredictionDataInputs | null
 ): TournamentRoundPrediction {
   return {
     round,
-    matches: slots.map((slot) => simulateSlot(slot, seedMap, outcomes, thirdPlaceAssignments)),
+    matches: slots.map((slot) => simulateSlot(slot, seedMap, outcomes, thirdPlaceAssignments, dataInputs)),
     notice
   };
 }
 
-function createDataCards(teamProfiles: PredictionTeamSnapshot[], groupCount: number): PredictionDataCard[] {
+function createDataCards(teamProfiles: PredictionTeamSnapshot[], groupCount: number, dataInputs?: PredictionDataInputs | null): PredictionDataCard[] {
   const totalPlayers = teamVerificationData.reduce((sum, team) => sum + team.players.length, 0);
   const keyPlayers = teamVerificationData.reduce((sum, team) => sum + team.players.filter((player) => player.isKeyPlayer).length, 0);
   const sourceCount = countUniqueSources(teamVerificationData.flatMap((team) => team.sources));
   const completeRosters = teamVerificationData.filter((team) => team.players.length >= 23).length;
-  const scheduleKnown = matchDetails.filter((match) => match.dateTime && match.stadium).length;
+  const officialMatchCount = dataInputs?.diagnostics.schedule.officialStructureMatches ?? matchDetails.length;
+  const apiFixtureCount = dataInputs?.diagnostics.schedule.apiFixtureMatches ?? 0;
+  const scheduleKnown = dataInputs?.diagnostics.schedule.datedMatches ?? matchDetails.filter((match) => match.dateTime).length;
+  const venueKnown = dataInputs?.diagnostics.schedule.venueMatches ?? matchDetails.filter((match) => match.stadium).length;
+  const restKnown = dataInputs?.diagnostics.schedule.restComputableMatches ?? 0;
+  const apiCardEvents = dataInputs?.diagnostics.risk.apiCardEvents ?? 0;
+  const cardRecords = dataInputs?.diagnostics.risk.cardRecords ?? 0;
+  const injuries = dataInputs?.diagnostics.risk.injuries ?? 0;
+  const lineups = dataInputs?.diagnostics.risk.lineups ?? 0;
+  const statistics = dataInputs?.diagnostics.risk.statistics ?? 0;
+  const apiPredictions = dataInputs?.diagnostics.risk.predictions ?? 0;
   const bracketSlots = allOfficialBracketSlots.length;
+  const apiResourceSources = dataInputs?.resourceDiagnostics.map((item) => `${item.label}: ${item.source} (${item.count})`) ?? [];
+  const scheduleValue =
+    apiFixtureCount > 0
+      ? `${scheduleKnown}/${apiFixtureCount} 일정 · ${venueKnown}/${apiFixtureCount} 경기장`
+      : `${officialMatchCount}/${officialMatchCount} 구조 확인`;
+  const scheduleDetails = [
+    `공식 경기 구조: ${officialMatchCount}/${officialMatchCount}`,
+    `API-Football fixtures: ${apiFixtureCount}건`,
+    `킥오프 시간 확인: ${scheduleKnown}건`,
+    `경기장 확인: ${venueKnown}건`,
+    `휴식일 계산 가능: ${restKnown}건`
+  ];
+  const riskDetails = [
+    `API-Football card events: ${apiCardEvents}건`,
+    `카드/징계 표시 레코드: ${cardRecords}건`,
+    `API-Football injuries: ${injuries}건`,
+    `API-Football lineups: ${lineups}건`,
+    `API-Football statistics: ${statistics}건`,
+    `API-Football predictions: ${apiPredictions}건`
+  ];
 
   return [
     {
@@ -819,7 +877,9 @@ function createDataCards(teamProfiles: PredictionTeamSnapshot[], groupCount: num
       confidence: "공식 확인",
       description: "FIFA 경기 일정의 조 편성 구조를 기준으로 예측 시드를 만듭니다.",
       sourceCount: 1,
-      items: ["A~L조 48팀", "팀 국기/코드 연결", "실제 결과 데이터와 분리"]
+      items: ["A~L조 48팀", "팀 국기/코드 연결", "실제 결과 데이터와 분리"],
+      details: [`API-Football fixtures 연결: ${apiFixtureCount}건`, `예측 입력 팀: ${teamProfiles.length}팀`],
+      dataSources: ["FIFA official group structure", "API-Football fixtures when available"]
     },
     {
       id: "team-strength",
@@ -828,7 +888,9 @@ function createDataCards(teamProfiles: PredictionTeamSnapshot[], groupCount: num
       confidence: "참고 자료",
       description: "파워 인덱스, 최근 성과, 감독, 포메이션, 선수층, 전술 키워드를 점수화합니다.",
       sourceCount,
-      items: ["공격/수비/폼/리스크 점수", "개최국 이점 보정", "대륙별 경쟁력 보정"]
+      items: ["공격/수비/폼/리스크 점수", "개최국 이점 보정", "대륙별 경쟁력 보정"],
+      details: dataInputs?.diagnostics.reflectedData.slice(0, 4),
+      missingReasons: dataInputs?.diagnostics.missingData.slice(0, 3)
     },
     {
       id: "rosters",
@@ -837,25 +899,32 @@ function createDataCards(teamProfiles: PredictionTeamSnapshot[], groupCount: num
       confidence: completeRosters === teamProfiles.length ? "신뢰도 높음" : "참고 자료",
       description: "팀 상세 페이지의 선수 명단, 핵심 선수, 예상 포메이션을 예측 변수로 사용합니다.",
       sourceCount,
-      items: [`23명 이상 연결 ${completeRosters}팀`, "감독/전술 출처 포함", "확정 선발은 경기 전 재확인"]
+      items: [`23명 이상 연결 ${completeRosters}팀`, "감독/전술 출처 포함", "확정 선발은 경기 전 재확인"],
+      details: [`전체 선수 입력 ${totalPlayers}명`, `핵심 선수 입력 ${keyPlayers}명`, `완성 로스터 ${completeRosters}/${teamProfiles.length}팀`]
     },
     {
       id: "schedule",
       title: "일정·경기장·휴식일",
-      value: `${scheduleKnown}/${matchDetails.length}경기 확정`,
-      confidence: scheduleKnown === matchDetails.length ? "공식 확인" : "확인 필요",
-      description: "경기 시간이 모두 확정되면 휴식일과 이동 피로도를 더 강하게 반영합니다.",
-      sourceCount: 1,
-      items: ["현재는 일부 경기 시간/장소 확인 필요", "연장전 피로도는 토너먼트 단계에서 위험 요인으로 표시", "실제 결과가 들어오면 우선 적용"]
+      value: scheduleValue,
+      confidence: apiFixtureCount > 0 && scheduleKnown > 0 ? "공식 확인" : "참고 자료",
+      description: "API-Football fixtures의 날짜·경기장 값을 우선 사용하고, 없을 때는 공식 104경기 구조를 fallback으로 유지합니다.",
+      sourceCount: apiResourceSources.length || 1,
+      items: scheduleDetails.slice(0, 3),
+      details: scheduleDetails,
+      missingReasons: dataInputs?.diagnostics.schedule.fallbackNotes,
+      dataSources: ["API-Football fixtures", "football-data.org fallback", "official static bracket/group structure"]
     },
     {
       id: "risk",
       title: "부상·징계·카드·체력",
-      value: "경기 전 재확인",
-      confidence: "확인 필요",
-      description: "변동성이 큰 정보는 확정값처럼 쓰지 않고 위험/불확실성 요인으로 분리합니다.",
-      sourceCount,
-      items: ["출전 금지/카드 현황은 빈 화면 대신 확인 필요 표시", "체력 변수 별도 표시", "공식 발표 전 단정 금지"]
+      value: `카드 ${cardRecords}건 · 부상 ${injuries}건`,
+      confidence: apiCardEvents > 0 || injuries > 0 ? "참고 자료" : "확인 필요",
+      description: "API-Football events/injuries/lineups/statistics/predictions를 예측 입력 진단에 연결하고, 부족한 항목은 fallback 사유를 표시합니다.",
+      sourceCount: apiResourceSources.length || sourceCount,
+      items: riskDetails.slice(0, 3),
+      details: riskDetails,
+      missingReasons: dataInputs?.diagnostics.risk.fallbackNotes,
+      dataSources: ["API-Football events", "API-Football injuries", "API-Football lineups/statistics/predictions", "static player risk fallback"]
     },
     {
       id: "bracket",
@@ -864,7 +933,9 @@ function createDataCards(teamProfiles: PredictionTeamSnapshot[], groupCount: num
       confidence: "공식 확인",
       description: "FIFA 브래킷 경기 번호와 라운드 연결은 고정하고 팀만 예측으로 채웁니다.",
       sourceCount: 1,
-      items: ["32강 16경기", "16강~결승 연결", "3위 배정표는 임시 배치 배지 표시"]
+      items: ["32강 16경기", "16강~결승 연결", "3위 배정표는 임시 배치 배지 표시"],
+      details: dataInputs?.diagnostics.resources.map((item) => `${item.resource}: ${item.count}건 · ${item.source}`),
+      dataSources: apiResourceSources
     }
   ];
 }
@@ -965,8 +1036,24 @@ export function createLegacyTournamentSimulation(prediction: FullTournamentPredi
   };
 }
 
-export function createFullTournamentPrediction(groups: TeamGroup[] = getBaseGroups()): FullTournamentPrediction {
-  const { groupPredictions, qualifiedTeams, thirdPlaceQualifiers } = createGroupPredictions(groups);
+function sourceSummaryForDataInputs(dataInputs?: PredictionDataInputs | null): PredictionSourceSummary[] {
+  if (!dataInputs) {
+    return [];
+  }
+
+  return dataInputs.resourceDiagnostics.map((resource) => ({
+    sourceName: `${resource.label} (${resource.source})`,
+    sourceUrl: resource.source === "api-football" ? "https://www.api-football.com/documentation-v3" : null,
+    lastUpdated: resource.lastUpdated,
+    confidence: resource.source === "api-football" || resource.source === "cache" ? "참고 자료" : "확인 필요",
+    notes:
+      resource.message ??
+      `${resource.resource} ${resource.count}건, fixture coverage ${resource.fixtureCoverage}건, fallback chain ${resource.fallbackChain.join(" > ") || "none"}`
+  }));
+}
+
+export function createFullTournamentPrediction(groups: TeamGroup[] = getBaseGroups(), dataInputs?: PredictionDataInputs | null): FullTournamentPrediction {
+  const { groupPredictions, qualifiedTeams, thirdPlaceQualifiers } = createGroupPredictions(groups, dataInputs);
   const seedMap = createSeedMap(groupPredictions, thirdPlaceQualifiers);
   const thirdPlaceAssignments = createThirdPlaceAssignments(thirdPlaceQualifiers);
   const outcomes: OutcomeMap = {};
@@ -977,14 +1064,15 @@ export function createFullTournamentPrediction(groups: TeamGroup[] = getBaseGrou
     seedMap,
     outcomes,
     thirdPlaceAssignments,
-    getThirdPlaceNotice()
+    getThirdPlaceNotice(),
+    dataInputs
   );
-  const roundOf16 = simulateRound("16강", officialRoundOf16Slots, seedMap, outcomes, thirdPlaceAssignments);
-  const quarterFinals = simulateRound("8강", officialQuarterFinalSlots, seedMap, outcomes, thirdPlaceAssignments);
-  const semiFinals = simulateRound("4강", officialSemiFinalSlots, seedMap, outcomes, thirdPlaceAssignments);
-  const thirdPlaceMatch = simulateSlot(officialThirdPlaceMatch, seedMap, outcomes, thirdPlaceAssignments);
-  const final = simulateSlot(officialFinalMatch, seedMap, outcomes, thirdPlaceAssignments);
-  const allSources = summarizeSources(teamVerificationData.flatMap((team) => team.sources));
+  const roundOf16 = simulateRound("16강", officialRoundOf16Slots, seedMap, outcomes, thirdPlaceAssignments, null, dataInputs);
+  const quarterFinals = simulateRound("8강", officialQuarterFinalSlots, seedMap, outcomes, thirdPlaceAssignments, null, dataInputs);
+  const semiFinals = simulateRound("4강", officialSemiFinalSlots, seedMap, outcomes, thirdPlaceAssignments, null, dataInputs);
+  const thirdPlaceMatch = simulateSlot(officialThirdPlaceMatch, seedMap, outcomes, thirdPlaceAssignments, dataInputs);
+  const final = simulateSlot(officialFinalMatch, seedMap, outcomes, thirdPlaceAssignments, dataInputs);
+  const allSources = [...sourceSummaryForDataInputs(dataInputs), ...summarizeSources(teamVerificationData.flatMap((team) => team.sources))];
 
   return {
     generatedAt: new Date().toISOString(),
@@ -994,11 +1082,14 @@ export function createFullTournamentPrediction(groups: TeamGroup[] = getBaseGrou
     notice:
       "이 예측은 공식 결과가 아니며, 공식 조 편성·팀 상세 데이터·브래킷 구조를 내부 규칙 모델로 계산한 참고용 시뮬레이션입니다. 실제 결과와 경기 전 공식 발표가 확인되면 해당 데이터가 우선합니다.",
     refreshStatus: {
-      stable: false,
+      stable: Boolean(dataInputs),
       message:
-        "자동 새로고침은 현재 안정적으로 지원하지 않습니다. 외부 경기 API와 경기 직전 부상/징계 데이터는 응답 형식과 제공 시점이 달라질 수 있어, 안정화 전까지 새로고침 버튼을 추가하지 않았습니다."
+        dataInputs
+          ? `서버 Route에서 API-Football fixtures/events/lineups/injuries/statistics/predictions 입력을 수집했습니다. 호출 제한 보호를 위해 상세 fixture는 ${dataInputs.resourceDiagnostics.find((item) => item.resource === "events")?.fixtureCoverage ?? 0}경기 범위로 샘플링하고, 부족한 데이터는 fallback 사유를 함께 표시합니다.`
+          : "자동 새로고침은 현재 안정적으로 지원하지 않습니다. 외부 경기 API와 경기 직전 부상/징계 데이터는 응답 형식과 제공 시점이 달라질 수 있어, 안정화 전까지 새로고침 버튼을 추가하지 않았습니다."
     },
-    dataCards: createDataCards(teamProfiles, groupIds.length),
+    dataCards: createDataCards(teamProfiles, groupIds.length, dataInputs),
+    dataDiagnostics: dataInputs?.diagnostics,
     sourceSummary: allSources,
     teamProfiles,
     groupStage: groupPredictions,
@@ -1017,6 +1108,7 @@ export function createFullTournamentPrediction(groups: TeamGroup[] = getBaseGrou
       "3위 팀 공식 배정표가 확정되지 않아 허용 조 목록 기반 임시 배치를 사용합니다.",
       "경기별 확정 선발, 부상, 징계, 카드 현황은 경기 전 공식 발표로 재확인해야 합니다.",
       "일정·경기장·휴식일이 모두 채워지면 피로도와 이동 변수를 추가 보정할 수 있습니다.",
+      ...(dataInputs?.diagnostics.fallbackExplanations ?? []),
       "Gemini/API 키가 없어도 내부 규칙 모델로 실행되며, 외부 API 오류가 예측 탭을 비우지 않습니다."
     ]
   };

@@ -349,9 +349,33 @@ function DataCardGrid({ cards }: { cards: PredictionDataCard[] }) {
               <Badge key={item} tone="neutral">{item}</Badge>
             ))}
           </div>
+          <CardDetailList title="반영 데이터" items={card.details} />
+          <CardDetailList title="부족한 이유/fallback" items={card.missingReasons} warning />
+          <CardDetailList title="사용 출처" items={card.dataSources} />
         </article>
       ))}
     </section>
+  );
+}
+
+function CardDetailList({ title, items, warning = false }: { title: string; items?: string[]; warning?: boolean }) {
+  const visibleItems = items?.filter((item) => item.trim().length > 0).slice(0, 6) ?? [];
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded border border-white/10 bg-pitch-900/65 p-3">
+      <p className={`text-xs font-black ${warning ? "text-amber-100/80" : "text-white/55"}`}>{title}</p>
+      <ul className="mt-2 space-y-1 text-xs leading-5 text-white/62">
+        {visibleItems.map((item) => (
+          <li key={item} className="break-words">
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -370,6 +394,26 @@ function ModelNotice({ prediction }: { prediction: FullTournamentPrediction }) {
           </div>
         ))}
       </div>
+      {prediction.dataDiagnostics ? (
+        <div className="mt-4 rounded border border-cyan-300/20 bg-cyan-400/10 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="neutral">API-Football 입력 진단</Badge>
+            <Badge tone="neutral">fixtures {prediction.dataDiagnostics.schedule.apiFixtureMatches}건</Badge>
+            <Badge tone="neutral">resources {prediction.dataDiagnostics.resources.length}종</Badge>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs leading-5 text-cyan-50/75 md:grid-cols-2">
+            {prediction.dataDiagnostics.resources.map((resource) => (
+              <div key={resource.resource} className="rounded border border-white/10 bg-pitch-900/70 p-2">
+                <strong className="text-white">{resource.label}</strong>
+                <span className="block">
+                  {resource.count}건 · {resource.source} · {resource.dataQuality}
+                </span>
+                {resource.message ? <span className="block text-white/45">{resource.message}</span> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

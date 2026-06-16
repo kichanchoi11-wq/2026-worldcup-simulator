@@ -32,11 +32,17 @@ export type GeminiAnalysisLog = {
   target: string;
   message: string;
   createdAt: string;
+  model?: string | null;
+  httpStatus?: number | null;
+  retryCount?: number;
+  payloadBytes?: number | null;
+  fallbackUsed?: boolean;
 };
 
 export type GeminiProviderStatus = {
   enabled: boolean;
   model: string;
+  fallbackModel: string;
   callCount: number;
   cacheHitCount: number;
   failureCount: number;

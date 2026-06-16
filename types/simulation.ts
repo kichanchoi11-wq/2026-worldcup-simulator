@@ -89,6 +89,47 @@ export interface PredictionDataCard {
   description: string;
   sourceCount: number;
   items: string[];
+  details?: string[];
+  missingReasons?: string[];
+  dataSources?: string[];
+}
+
+export interface PredictionResourceDiagnostic {
+  resource: "fixtures" | "events" | "lineups" | "injuries" | "statistics" | "predictions";
+  label: string;
+  source: string;
+  count: number;
+  dataQuality: string;
+  message: string | null;
+  fallbackChain: string[];
+  lastUpdated: string | null;
+  fixtureCoverage: number;
+}
+
+export interface PredictionDataDiagnostics {
+  schedule: {
+    officialStructureMatches: number;
+    apiFixtureMatches: number;
+    datedMatches: number;
+    venueMatches: number;
+    restComputableMatches: number;
+    source: string;
+    fallbackNotes: string[];
+  };
+  risk: {
+    cardRecords: number;
+    apiCardEvents: number;
+    injuries: number;
+    lineups: number;
+    statistics: number;
+    predictions: number;
+    source: string;
+    fallbackNotes: string[];
+  };
+  resources: PredictionResourceDiagnostic[];
+  reflectedData: string[];
+  missingData: string[];
+  fallbackExplanations: string[];
 }
 
 export interface PredictionTeamSnapshot {
@@ -184,6 +225,7 @@ export interface FullTournamentPrediction {
     message: string;
   };
   dataCards: PredictionDataCard[];
+  dataDiagnostics?: PredictionDataDiagnostics;
   sourceSummary: PredictionSourceSummary[];
   teamProfiles: PredictionTeamSnapshot[];
   groupStage: GroupPrediction[];
