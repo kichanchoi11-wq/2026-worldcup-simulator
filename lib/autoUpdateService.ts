@@ -395,7 +395,7 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
       stable: cronConfigured,
       message:
         cronConfigured
-          ? "Vercel Cron은 6시간마다 서버 API Route만 호출하고 브라우저 크롤링을 하지 않습니다. API-Football 호출 제한에 가까워지면 자동으로 football-data.org, 캐시, 정적 데이터 순서로 fallback합니다."
+          ? "Vercel Hobby 플랜 제한에 맞춰 하루 1회 서버 API Route만 호출합니다. API-Football 호출 제한에 가까워지면 자동으로 football-data.org, 캐시, 정적 데이터 순서로 fallback합니다."
           : "자동 새로고침은 CRON_SECRET 환경변수가 설정되어야 활성화됩니다. 지금은 관리자 수동 새로고침을 사용하세요."
     }
   };
