@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import AdminRecollectionPanel from "@/components/AdminRecollectionPanel";
 import Badge from "@/components/Badge";
+import DataPipelineDiagnosticsPanel from "@/components/DataPipelineDiagnosticsPanel";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
 import { createMatchPageData, matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
@@ -393,7 +394,10 @@ export default function AdminReviewPanel() {
           <DebugItem label="경기 일정 확인 필요" value={`${matchDetailAudit.missingDates}개`} />
           <DebugItem label="경기장 확인 필요" value={`${matchDetailAudit.missingStadiums}개`} />
         </div>
-        <AdminRecollectionPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
+        <div className="mt-4 space-y-4">
+          <DataPipelineDiagnosticsPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
+          <AdminRecollectionPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
+        </div>
       </section>
 
       <FootballDataRefreshPanel />

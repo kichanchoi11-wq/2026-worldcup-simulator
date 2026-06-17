@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
+import { teamVerificationData } from "@/data/teamVerificationData";
 import { readArrayStorage, storageKeys } from "@/lib/storage";
 import type { CardRecord } from "@/types/card";
+import type { FootballMatch } from "@/types/football";
 import type { MatchReview } from "@/types/match";
 import type { RecollectionJob } from "@/types/recollection";
 
 type StoredMatchState = {
+  actualMatch: FootballMatch | null;
+  fitnessSummary: string;
   review: MatchReview | null;
   latestJob: RecollectionJob | null;
   events: unknown[];
@@ -15,6 +19,14 @@ type StoredMatchState = {
   injuries: unknown[];
   lineups: unknown[];
   statistics: unknown[];
+};
+
+type StoredMatchRecollectionPanelProps = {
+  matchId: string | number;
+  homeTeamId?: string | null;
+  awayTeamId?: string | null;
+  homeTeamName?: string | null;
+  awayTeamName?: string | null;
 };
 
 function statusTone(status: string): Parameters<typeof Badge>[0]["tone"] {
@@ -37,17 +49,104 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
-export default function StoredMatchRecollectionPanel({ matchId }: { matchId: string | number }) {
+function normalizeName(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9가-힣]+/g, " ")
+    .trim();
+}
+
+function aliasesFor(teamId: string | null | undefined, teamName: string | null | undefined) {
+  const team = teamVerificationData.find((item) => item.teamId === teamId);
+  return [teamName, team?.teamName, team?.teamNameEn, team?.teamCode, team?.teamId].map(normalizeName).filter(Boolean);
+}
+
+function nameMatches(apiName: string, aliases: string[]) {
+  const normalized = normalizeName(apiName);
+  return aliases.some((alias) => normalized.includes(alias) || alias.includes(normalized));
+}
+
+function findStoredActualMatch(matches: FootballMatch[], props: StoredMatchRecollectionPanelProps) {
+  const direct = matches.find((match) => String(match.id) === String(props.matchId));
+  if (direct) return direct;
+
+  const homeAliases = aliasesFor(props.homeTeamId, props.homeTeamName);
+  const awayAliases = aliasesFor(props.awayTeamId, props.awayTeamName);
+
+  return (
+    matches.find((match) => {
+      const sameDirection = nameMatches(match.homeTeam, homeAliases) && nameMatches(match.awayTeam, awayAliases);
+      const swapped = nameMatches(match.homeTeam, awayAliases) && nameMatches(match.awayTeam, homeAliases);
+      return sameDirection || swapped;
+    }) ?? null
+  );
+}
+
+function scoreLabel(match: FootballMatch | null) {
+  if (!match || match.score.home === null || match.score.away === null) {
+    return "스코어 없음";
+  }
+
+  return `${match.homeTeam} ${match.score.home} - ${match.score.away} ${match.awayTeam}`;
+}
+
+function daysBetween(from: string, to: string) {
+  return Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function teamScheduleSummary(matches: FootballMatch[], actualMatch: FootballMatch, teamName: string) {
+  if (!actualMatch.utcDate) {
+    return `${teamName}: 경기 날짜가 없어 휴식일 계산 보류`;
+  }
+
+  const dates = matches
+    .filter((match) => (match.homeTeam === teamName || match.awayTeam === teamName) && match.utcDate)
+    .map((match) => match.utcDate as string)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  const currentIndex = dates.findIndex((date) => date === actualMatch.utcDate);
+  const previous = currentIndex > 0 ? dates[currentIndex - 1] : null;
+  const next = currentIndex >= 0 && currentIndex < dates.length - 1 ? dates[currentIndex + 1] : null;
+  const restDays = previous ? daysBetween(previous, actualMatch.utcDate) : null;
+  const nextGap = next ? daysBetween(actualMatch.utcDate, next) : null;
+  const density = restDays !== null && restDays <= 3 ? "높음" : restDays !== null && restDays <= 5 ? "보통" : "낮음";
+
+  return `${teamName}: 이전 경기 ${restDays ?? "없음"}일 전, 다음 경기 ${nextGap ?? "미정"}일 후, 일정 밀도 ${density}`;
+}
+
+function fitnessSummary(matches: FootballMatch[], actualMatch: FootballMatch | null) {
+  if (!actualMatch) {
+    return "저장 경기 매칭 후 휴식일·일정 밀도를 내부 계산합니다.";
+  }
+
+  return [
+    teamScheduleSummary(matches, actualMatch, actualMatch.homeTeam),
+    teamScheduleSummary(matches, actualMatch, actualMatch.awayTeam)
+  ].join(" / ");
+}
+
+export default function StoredMatchRecollectionPanel({
+  matchId,
+  homeTeamId,
+  awayTeamId,
+  homeTeamName,
+  awayTeamName
+}: StoredMatchRecollectionPanelProps) {
   const [state, setState] = useState<StoredMatchState | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const matches = readArrayStorage<FootballMatch>(storageKeys.apiMatchesData);
       const reviews = readArrayStorage<MatchReview>(storageKeys.matchReviewsData);
       const jobs = readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData);
       const allCardRecords = readArrayStorage<CardRecord>(storageKeys.apiFootballCardRecordsData);
+      const actualMatch = findStoredActualMatch(matches, { matchId, homeTeamId, awayTeamId, homeTeamName, awayTeamName });
       const matchCardRecords = allCardRecords.filter((record) => record.matchId !== null && String(record.matchId) === String(matchId));
 
       setState({
+        actualMatch,
+        fitnessSummary: fitnessSummary(matches, actualMatch),
         review: reviews.find((item) => String(item.matchId) === String(matchId)) ?? null,
         latestJob: jobs.find((job) => ["risks", "lineups", "match-reviews", "gemini-risks", "gemini-all", "all"].includes(job.scope)) ?? null,
         events: readArrayStorage<unknown>(storageKeys.apiFootballEventsData),
@@ -59,9 +158,9 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [matchId]);
+  }, [awayTeamId, awayTeamName, homeTeamId, homeTeamName, matchId]);
 
-  if (!state || (!state.latestJob && !state.review && state.events.length === 0 && state.cardRecords.length === 0 && state.injuries.length === 0 && state.lineups.length === 0)) {
+  if (!state || (!state.actualMatch && !state.latestJob && !state.review && state.events.length === 0 && state.cardRecords.length === 0 && state.injuries.length === 0 && state.lineups.length === 0)) {
     return null;
   }
 
@@ -71,12 +170,13 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
         <div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="API 실제 데이터">관리자 재수집 반영</Badge>
+            {state.actualMatch ? <Badge tone={state.actualMatch.locked || (state.actualMatch.score.home !== null && state.actualMatch.score.away !== null) ? "success" : "warning"}>실제 API 결과 우선</Badge> : null}
             {state.latestJob ? <Badge tone={statusTone(state.latestJob.status)}>{state.latestJob.status}</Badge> : null}
             {state.review ? <Badge tone={state.review.reviewType === "gemini" ? "AI 예측" : "분석 참고"}>{state.review.reviewType}</Badge> : null}
           </div>
           <h2 className="mt-3 text-xl font-black text-white">저장된 경기 재검증 결과</h2>
           <p className="mt-2 text-sm leading-6 text-cyan-50/75">
-            카드, 징계, 부상, 라인업, 경기 리뷰 재수집 결과가 저장되어 있으면 이 화면에서 함께 확인합니다.
+            저장된 경기 결과, 카드, 징계, 부상, 라인업, 경기 리뷰 재수집 결과가 있으면 정적 경기 정보보다 먼저 이 영역에서 확인합니다.
           </p>
         </div>
         <div className="rounded border border-white/10 bg-pitch-900/80 px-3 py-2 text-sm font-black text-white">
@@ -85,6 +185,10 @@ export default function StoredMatchRecollectionPanel({ matchId }: { matchId: str
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <InfoCard label="실제 경기 상태" value={state.actualMatch ? `${state.actualMatch.status} · ${state.actualMatch.sourceType}` : "저장 경기 매칭 없음"} />
+        <InfoCard label="실제 스코어" value={scoreLabel(state.actualMatch)} />
+        <InfoCard label="실제 일정/경기장" value={state.actualMatch ? `${state.actualMatch.utcDate ? new Date(state.actualMatch.utcDate).toLocaleString("ko-KR") : "일정 없음"} · ${state.actualMatch.venue ?? "경기장 없음"}` : "저장 경기 없음"} />
+        <InfoCard label="체력 내부 계산" value={state.fitnessSummary} />
         <InfoCard label="API 이벤트" value={`${state.events.length}건 저장`} />
         <InfoCard label="카드 현황" value={`${state.cardRecords.length}건 저장`} />
         <InfoCard label="API 부상" value={`${state.injuries.length}건 저장`} />

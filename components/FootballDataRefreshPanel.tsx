@@ -51,6 +51,20 @@ function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 75_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function FootballDataRefreshPanel({ size = "full" }: { size?: PanelSize }) {
   const [snapshot, setSnapshot] = useState<FootballDataRefreshSnapshot | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -150,7 +164,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     setMessage(null);
 
     try {
-      const response = await fetch("/api/refresh-football-data", { method: "POST", credentials: "same-origin" });
+      const response = await fetchWithTimeout("/api/refresh-football-data", { method: "POST", credentials: "same-origin" });
       const payload = (await response.json()) as Partial<FootballDataRefreshSnapshot> & { message?: string };
 
       if (response.status === 401) {

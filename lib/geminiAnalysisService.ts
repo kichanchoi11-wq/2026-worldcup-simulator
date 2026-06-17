@@ -1,6 +1,6 @@
 import type { MatchPageData, MatchReview } from "@/types/match";
 import { createMatchReview, createMatchReviewCacheKey, createRulesReviewMetadata } from "@/lib/matchReviewService";
-import type { GeminiAnalysisKind, GeminiAnalysisLog, GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
+import type { GeminiActiveJob, GeminiAnalysisKind, GeminiAnalysisLog, GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
 
 type GeminiReviewJson = {
   matchSummary?: unknown;
@@ -29,16 +29,24 @@ export type GeminiMatchReviewResult = {
 
 const defaultGeminiModel = "gemini-3.5-flash";
 const defaultGeminiFallbackModel = "gemini-2.5-flash";
-const defaultGeminiTimeoutMs = 18_000;
+const defaultGeminiTimeoutMs = 30_000;
 const geminiReviewCache = new Map<string, GeminiMatchReviewResult>();
 
 type GeminiState = {
   analysisCache: Map<string, GeminiAnalysisRecord>;
+  activeJobs: Map<string, GeminiActiveJob>;
   callCount: number;
   cacheHitCount: number;
   failureCount: number;
+  timeoutCount: number;
+  fallbackCount: number;
   lastCallAt: string | null;
   lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureMessage: string | null;
+  lastHttpStatus: number | null;
+  lastPayloadBytes: number | null;
+  resultSaveSuccess: boolean;
   logs: GeminiAnalysisLog[];
 };
 
@@ -69,11 +77,19 @@ function getGeminiState(): GeminiState {
   if (!globalThis.__worldCupGeminiAnalysisState) {
     globalThis.__worldCupGeminiAnalysisState = {
       analysisCache: new Map(),
+      activeJobs: new Map(),
       callCount: 0,
       cacheHitCount: 0,
       failureCount: 0,
+      timeoutCount: 0,
+      fallbackCount: 0,
       lastCallAt: null,
       lastSuccessAt: null,
+      lastFailureAt: null,
+      lastFailureMessage: null,
+      lastHttpStatus: null,
+      lastPayloadBytes: null,
+      resultSaveSuccess: false,
       logs: []
     };
   }
@@ -94,7 +110,15 @@ function logGeminiEvent(event: Omit<GeminiAnalysisLog, "id" | "createdAt">) {
 }
 
 function rememberGeminiFailure(kind: GeminiAnalysisKind, target: string, message: string, details: Partial<GeminiAnalysisLog> = {}) {
-  getGeminiState().failureCount += 1;
+  const state = getGeminiState();
+  state.failureCount += 1;
+  state.lastFailureAt = new Date().toISOString();
+  state.lastFailureMessage = message;
+  state.lastHttpStatus = details.httpStatus ?? null;
+  state.lastPayloadBytes = details.payloadBytes ?? null;
+  if (details.fallbackUsed) {
+    state.fallbackCount += 1;
+  }
   logGeminiEvent({
     kind,
     target,
@@ -104,6 +128,47 @@ function rememberGeminiFailure(kind: GeminiAnalysisKind, target: string, message
     message,
     ...details
   });
+}
+
+function startGeminiJob(kind: GeminiAnalysisKind, target: string, model: string | null) {
+  const state = getGeminiState();
+  const job: GeminiActiveJob = {
+    id: crypto.randomUUID(),
+    kind,
+    target,
+    model,
+    startedAt: new Date().toISOString()
+  };
+
+  state.activeJobs.set(job.id, job);
+  return job.id;
+}
+
+function finishGeminiJob(jobId: string | null) {
+  if (!jobId) {
+    return;
+  }
+
+  getGeminiState().activeJobs.delete(jobId);
+}
+
+export function cleanupStaleGeminiJobs(maxAgeMs = 60_000) {
+  const state = getGeminiState();
+  const now = Date.now();
+  let cleaned = 0;
+
+  for (const [jobId, job] of state.activeJobs.entries()) {
+    if (now - new Date(job.startedAt).getTime() > maxAgeMs) {
+      cleaned += 1;
+      state.activeJobs.delete(jobId);
+      rememberGeminiFailure(job.kind, job.target, "1분 이상 실행 중으로 남은 Gemini 작업을 자동 정리했습니다.", {
+        model: job.model,
+        fallbackUsed: true
+      });
+    }
+  }
+
+  return cleaned;
 }
 
 function parseJsonObject<T>(text: string): T | null {
@@ -138,7 +203,7 @@ function getFallbackGeminiModel() {
   return fallback === primary ? "gemini-2.5-pro" : fallback;
 }
 
-function getGeminiTimeoutMs() {
+export function getGeminiTimeoutMs() {
   const value = Number(process.env.GEMINI_TIMEOUT_MS);
   return Number.isFinite(value) && value >= 3_000 ? value : defaultGeminiTimeoutMs;
 }
@@ -158,7 +223,7 @@ function requestBody(prompt: string) {
   });
 }
 
-async function callGeminiText(prompt: string): Promise<
+async function callGeminiText(prompt: string, context: { kind: GeminiAnalysisKind; target: string }): Promise<
   | { ok: true; model: string; text: string; payloadBytes: number; fallbackUsed: boolean; retryCount: number }
   | { ok: false; model: string; message: string; httpStatus: number | null; payloadBytes: number; fallbackUsed: boolean; retryCount: number }
 > {
@@ -180,6 +245,8 @@ async function callGeminiText(prompt: string): Promise<
     };
   }
 
+  const jobId = startGeminiJob(context.kind, context.target, models[0] ?? defaultGeminiModel);
+
   for (const [index, model] of models.entries()) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), getGeminiTimeoutMs());
@@ -198,9 +265,10 @@ async function callGeminiText(prompt: string): Promise<
       });
 
       if (!response.ok) {
+        const responseText = await response.text();
         lastFailure = {
           model,
-          message: `Gemini ${model} 응답 오류(${response.status})`,
+          message: `Gemini ${model} 응답 오류(${response.status})${responseText ? `: ${responseText.slice(0, 220)}` : ""}`,
           httpStatus: response.status,
           fallbackUsed: index > 0,
           retryCount: index
@@ -213,6 +281,7 @@ async function callGeminiText(prompt: string): Promise<
       };
       const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("\n") ?? "";
 
+      finishGeminiJob(jobId);
       return {
         ok: true,
         model,
@@ -222,6 +291,9 @@ async function callGeminiText(prompt: string): Promise<
         retryCount: index
       };
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        getGeminiState().timeoutCount += 1;
+      }
       lastFailure = {
         model,
         message: error instanceof Error && error.name === "AbortError" ? `Gemini ${model} 호출 timeout` : `Gemini ${model} 호출 실패`,
@@ -234,6 +306,7 @@ async function callGeminiText(prompt: string): Promise<
     }
   }
 
+  finishGeminiJob(jobId);
   return {
     ok: false,
     model: lastFailure?.model ?? models[0] ?? defaultGeminiModel,
@@ -259,7 +332,8 @@ function createFallbackAnalysis(input: GeminiAnalysisInput, status: GeminiAnalys
     bulletPoints: input.fallbackBullets ?? [],
     dataGaps: input.fallbackDataGaps ?? [],
     sources: input.sources ?? [],
-    message
+    message,
+    rawText: null
   };
 }
 
@@ -296,10 +370,13 @@ function applyGeminiAnalysisPayload(input: GeminiAnalysisInput, payload: GeminiA
 }
 
 export function getGeminiProviderStatus(): GeminiProviderStatus {
+  cleanupStaleGeminiJobs();
   const state = getGeminiState();
   const model = getPrimaryGeminiModel();
   const fallbackModel = getFallbackGeminiModel();
   const enabled = Boolean(process.env.GEMINI_API_KEY);
+  const activeJobs = Array.from(state.activeJobs.values());
+  const staleJobCount = activeJobs.filter((job) => Date.now() - new Date(job.startedAt).getTime() > 60_000).length;
 
   return {
     enabled,
@@ -308,8 +385,19 @@ export function getGeminiProviderStatus(): GeminiProviderStatus {
     callCount: state.callCount,
     cacheHitCount: state.cacheHitCount,
     failureCount: state.failureCount,
+    timeoutCount: state.timeoutCount,
+    fallbackCount: state.fallbackCount,
+    activeJobCount: activeJobs.length,
+    staleJobCount,
     lastCallAt: state.lastCallAt,
     lastSuccessAt: state.lastSuccessAt,
+    lastFailureAt: state.lastFailureAt,
+    lastFailureMessage: state.lastFailureMessage,
+    lastHttpStatus: state.lastHttpStatus,
+    lastPayloadBytes: state.lastPayloadBytes,
+    resultSaveSuccess: state.resultSaveSuccess,
+    screenReflectionStatus: state.resultSaveSuccess ? "저장됨" : state.fallbackCount > 0 ? "fallback 저장됨" : "아직 없음",
+    activeJobs,
     logs: state.logs,
     message: enabled
       ? "Gemini API 키가 서버 환경변수에 있어 서버 Route에서만 호출합니다."
@@ -323,6 +411,7 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
 
   if (cached) {
     state.cacheHitCount += 1;
+    state.resultSaveSuccess = true;
     logGeminiEvent({
       kind: input.kind,
       target: input.title,
@@ -340,11 +429,12 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
     };
   }
 
-  const gemini = await callGeminiText(buildGenericGeminiPrompt(input));
+  const gemini = await callGeminiText(buildGenericGeminiPrompt(input), { kind: input.kind, target: input.title });
 
   if (!gemini.ok) {
     const fallback = createFallbackAnalysis(input, "fallback", `${gemini.message} 내부 규칙 기반 분석을 사용했습니다.`);
     state.analysisCache.set(input.cacheKey, fallback);
+    state.resultSaveSuccess = true;
     rememberGeminiFailure(input.kind, input.title, fallback.message, {
       model: gemini.model,
       httpStatus: gemini.httpStatus,
@@ -358,14 +448,20 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
   const parsed = parseJsonObject<GeminiAnalysisJson>(gemini.text);
 
   if (!parsed) {
-    const fallback = createFallbackAnalysis(input, "fallback", "Gemini 응답 파싱에 실패해 내부 규칙 기반 분석을 사용했습니다.");
+    const fallback = {
+      ...createFallbackAnalysis(input, "fallback", "Gemini 응답 JSON 파싱에 실패해 원문 일부를 저장하고 내부 규칙 기반 분석을 사용했습니다."),
+      rawText: gemini.text.slice(0, 1200),
+      dataGaps: [...(input.fallbackDataGaps ?? []), "Gemini 응답이 JSON 형식이 아니어서 원문 일부만 저장했습니다."]
+    };
     state.analysisCache.set(input.cacheKey, fallback);
+    state.resultSaveSuccess = true;
     rememberGeminiFailure(input.kind, input.title, fallback.message, {
       model: gemini.model,
       httpStatus: null,
       retryCount: gemini.retryCount,
       payloadBytes: gemini.payloadBytes,
-      fallbackUsed: true
+      fallbackUsed: true,
+      rawText: fallback.rawText
     });
     return fallback;
   }
@@ -373,6 +469,7 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
   const result = applyGeminiAnalysisPayload(input, parsed, gemini.model);
   state.analysisCache.set(input.cacheKey, result);
   state.lastSuccessAt = result.generatedAt;
+  state.resultSaveSuccess = true;
   logGeminiEvent({
     kind: input.kind,
     target: input.title,
@@ -558,6 +655,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
 
   if (cached) {
     getGeminiState().cacheHitCount += 1;
+    getGeminiState().resultSaveSuccess = true;
     logGeminiEvent({
       kind: "match-review",
       target: cacheKey,
@@ -571,7 +669,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
 
   const state = getGeminiState();
 
-  const gemini = await callGeminiText(buildGeminiPrompt(pageData, fallbackReview));
+  const gemini = await callGeminiText(buildGeminiPrompt(pageData, fallbackReview), { kind: "match-review", target: createMatchReviewCacheKey(pageData) });
 
   if (!gemini.ok) {
     const result = {
@@ -585,6 +683,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       }
     };
     geminiReviewCache.set(cacheKey, result);
+    state.resultSaveSuccess = true;
     rememberGeminiFailure("match-review", cacheKey, result.message, {
       model: gemini.model,
       httpStatus: gemini.httpStatus,
@@ -601,7 +700,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
     const result = {
       ok: true,
       usedGemini: false,
-      message: "Gemini 응답 파싱에 실패해 규칙 기반 리뷰로 fallback했습니다.",
+      message: `Gemini 응답 JSON 파싱에 실패해 규칙 기반 리뷰로 fallback했습니다. 원문 일부: ${gemini.text.slice(0, 240)}`,
       review: {
         ...fallbackReview,
         reviewType: "fallback" as const,
@@ -609,12 +708,14 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       }
     };
     geminiReviewCache.set(cacheKey, result);
+    state.resultSaveSuccess = true;
     rememberGeminiFailure("match-review", cacheKey, result.message, {
       model: gemini.model,
       httpStatus: null,
       retryCount: gemini.retryCount,
       payloadBytes: gemini.payloadBytes,
-      fallbackUsed: true
+      fallbackUsed: true,
+      rawText: gemini.text.slice(0, 1200)
     });
     return result;
   }
@@ -627,6 +728,7 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
   };
   geminiReviewCache.set(cacheKey, result);
   state.lastSuccessAt = result.review.reviewedAt;
+  state.resultSaveSuccess = true;
   logGeminiEvent({
     kind: "match-review",
     target: cacheKey,

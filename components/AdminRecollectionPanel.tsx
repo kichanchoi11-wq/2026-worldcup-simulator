@@ -142,6 +142,42 @@ function upsertJob(jobs: RecollectionJob[], nextJob: RecollectionJob) {
   return [nextJob, ...jobs.filter((job) => job.scope !== nextJob.scope)].slice(0, 24);
 }
 
+function cleanupStaleRunningJobs(jobs: RecollectionJob[]) {
+  const now = new Date().toISOString();
+  let changed = false;
+  const cleaned = jobs.map((job) => {
+    if (job.status !== "실행 중" || !job.startedAt || Date.now() - new Date(job.startedAt).getTime() <= 60_000) {
+      return job;
+    }
+
+    changed = true;
+    return {
+      ...job,
+      status: "실패" as const,
+      finishedAt: now,
+      failedCount: Math.max(job.failedCount, 1),
+      message: "1분 이상 실행 중으로 남아 자동 정리했습니다. 서버 timeout, 네트워크 실패, 또는 브라우저 상태 갱신 중단 가능성이 있습니다.",
+      error: "stale-running-job-cleaned"
+    };
+  });
+
+  return { jobs: cleaned, changed };
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 75_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
   const [jobs, setJobs] = useState<RecollectionJob[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -151,7 +187,12 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setJobs(readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData));
+      const storedJobs = readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData);
+      const cleaned = cleanupStaleRunningJobs(storedJobs);
+      if (cleaned.changed) {
+        safeWriteStorage(storageKeys.adminRecollectionJobsData, cleaned.jobs);
+      }
+      setJobs(cleaned.jobs);
       setGeminiStatus(readStorage<GeminiProviderStatus | null>(storageKeys.geminiStatusData, null));
     }, 0);
 
@@ -174,7 +215,7 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
     setMessage(`${label} 실행 중입니다.`);
 
     try {
-      const response = await fetch("/api/admin/recollect", {
+      const response = await fetchWithTimeout("/api/admin/recollect", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },

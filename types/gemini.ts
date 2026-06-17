@@ -21,6 +21,7 @@ export type GeminiAnalysisRecord = {
   dataGaps: string[];
   sources: string[];
   message: string;
+  rawText?: string | null;
 };
 
 export type GeminiAnalysisLog = {
@@ -37,6 +38,15 @@ export type GeminiAnalysisLog = {
   retryCount?: number;
   payloadBytes?: number | null;
   fallbackUsed?: boolean;
+  rawText?: string | null;
+};
+
+export type GeminiActiveJob = {
+  id: string;
+  kind: GeminiAnalysisKind;
+  target: string;
+  model: string | null;
+  startedAt: string;
 };
 
 export type GeminiProviderStatus = {
@@ -46,8 +56,19 @@ export type GeminiProviderStatus = {
   callCount: number;
   cacheHitCount: number;
   failureCount: number;
+  timeoutCount: number;
+  fallbackCount: number;
+  activeJobCount: number;
+  staleJobCount: number;
   lastCallAt: string | null;
   lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureMessage: string | null;
+  lastHttpStatus: number | null;
+  lastPayloadBytes: number | null;
+  resultSaveSuccess: boolean;
+  screenReflectionStatus: "저장됨" | "fallback 저장됨" | "아직 없음";
+  activeJobs: GeminiActiveJob[];
   logs: GeminiAnalysisLog[];
   message: string;
 };

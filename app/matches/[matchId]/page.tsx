@@ -62,6 +62,14 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         </div>
       </section>
 
+      <StoredMatchRecollectionPanel
+        matchId={match.matchId}
+        homeTeamId={match.homeTeamId}
+        awayTeamId={match.awayTeamId}
+        homeTeamName={match.homeTeamName}
+        awayTeamName={match.awayTeamName}
+      />
+
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -101,8 +109,6 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         fitnessProfiles={pageData.teamFitnessProfiles}
         dataGaps={pageData.dataGaps}
       />
-
-      <StoredMatchRecollectionPanel matchId={match.matchId} />
 
       <section className="rounded border border-violet-300/25 bg-violet-400/10 p-5 shadow-panel">
         <div className="flex flex-wrap items-center gap-2">
