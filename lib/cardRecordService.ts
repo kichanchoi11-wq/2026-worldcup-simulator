@@ -100,8 +100,8 @@ function fallbackCardRecords(refreshedAt: string): CardRecord[] {
       cardType: "확인 필요" as const,
       reason:
         player.yellowCards !== null || player.redCards !== null
-          ? `정적 데이터 기준 경고 ${player.yellowCards ?? 0}, 퇴장 ${player.redCards ?? 0}`
-          : "API-Football events 또는 공식 경기 보고서가 들어오면 실제 카드 기록으로 교체됩니다.",
+          ? `정적 데이터 기준 경고 ${player.yellowCards ?? 0}, 퇴장 ${player.redCards ?? 0}. API-Football 무료 플랜에서 2026 events 접근이 막히거나 fixtureId가 없으면 실제 카드 기록은 공식 경기 보고서 확인 후 교체됩니다.`
+          : "API-Football 무료 플랜에서 2026 events 접근이 막히거나 fixtureId가 없어 실제 카드 이벤트를 직접 수집하지 못했습니다. 공식 경기 보고서가 들어오면 실제 카드 기록으로 교체됩니다.",
       sourceName: "정적 기본 데이터" as const,
       sourceUrl: team.sources.find((source) => source.sourceUrl)?.sourceUrl ?? null,
       lastUpdated: refreshedAt

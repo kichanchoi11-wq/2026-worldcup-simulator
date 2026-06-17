@@ -1,6 +1,7 @@
 import type { GeminiProviderStatus } from "@/types/gemini";
 
 export type DiagnosticStatus = "success" | "partial" | "failed" | "skipped";
+export type ApiFootballEndpointStatus = DiagnosticStatus | "empty" | "plan-limited" | "mapping-failed";
 
 export type ApiFootballDiagnosticCall = {
   endpoint: string;
@@ -11,10 +12,41 @@ export type ApiFootballDiagnosticCall = {
   responseLength: number;
   responseCount: number;
   normalizedCount: number;
+  classification: ApiFootballEndpointStatus;
+  season?: number | null;
   error: string | null;
+  fallbackReason?: string | null;
+  replacementStrategy?: string | null;
   sample: unknown[];
   startedAt: string;
   finishedAt: string;
+};
+
+export type ApiFootballSeasonProbe = {
+  season: number;
+  access: "accessible" | "blocked" | "partial" | "unavailable" | "not-tested";
+  fixtureId: number | null;
+  teamId: number | null;
+  usableEndpoints: string[];
+  blockedEndpoints: string[];
+  emptyEndpoints: string[];
+  skippedEndpoints: string[];
+  calls: ApiFootballDiagnosticCall[];
+  message: string;
+};
+
+export type ApiFootballFallbackStrategy = {
+  seasonAccessLimited: boolean;
+  responseMessage: string | null;
+  actual2026Source: "api-football" | "football-data.org fallback" | "static official bracket fallback";
+  apiFootballReferenceRange: string | null;
+  apiFootballReferencePurpose: string[];
+  skippedDetailReason: string | null;
+  cardsFallback: string;
+  injuriesFallback: string;
+  disciplineFallback: string;
+  fitnessFallback: string;
+  screenMessage: string;
 };
 
 export type MatchIdMapping = {
@@ -52,7 +84,13 @@ export type ApiFootballDiagnosis = {
     remaining: number;
     blocked: boolean;
   };
+  baseUrl: string;
+  requestMode: "API-SPORTS direct";
+  targetLeague: string;
+  targetSeason: string;
   calls: ApiFootballDiagnosticCall[];
+  seasonProbes: ApiFootballSeasonProbe[];
+  fallbackStrategy: ApiFootballFallbackStrategy;
   matchMappings: MatchIdMapping[];
   dataReflection: {
     rawCollection: DiagnosticStatus;

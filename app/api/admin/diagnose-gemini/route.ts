@@ -116,7 +116,7 @@ export async function POST(request: Request) {
   const payload: GeminiDiagnosis = {
     ok: Boolean(after.enabled && (call?.ok || after.resultSaveSuccess)),
     keyConfigured: after.enabled,
-    modelSelection: "GEMINI_MODEL 또는 GEMINI_PRIMARY_MODEL을 우선 사용하고, 실패 시 GEMINI_FALLBACK_MODEL로 재시도합니다.",
+    modelSelection: after.modelSelectionMessage,
     selectedModel: after.model,
     fallbackModel: after.fallbackModel,
     timeoutMs: getGeminiTimeoutMs(),

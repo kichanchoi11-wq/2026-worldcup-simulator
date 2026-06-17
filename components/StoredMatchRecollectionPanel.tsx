@@ -117,7 +117,7 @@ function teamScheduleSummary(matches: FootballMatch[], actualMatch: FootballMatc
 
 function fitnessSummary(matches: FootballMatch[], actualMatch: FootballMatch | null) {
   if (!actualMatch) {
-    return "저장 경기 매칭 후 휴식일·일정 밀도를 내부 계산합니다.";
+    return "저장 경기 매칭 전에도 체력은 경기 일정 기반 내부 계산 대상으로 유지됩니다.";
   }
 
   return [
@@ -125,6 +125,9 @@ function fitnessSummary(matches: FootballMatch[], actualMatch: FootballMatch | n
     teamScheduleSummary(matches, actualMatch, actualMatch.awayTeam)
   ].join(" / ");
 }
+
+const fallbackReason =
+  "API-Football 무료 플랜에서 2026 events/injuries/statistics 또는 fixtureId 접근이 제한되면, 해당 항목은 비워두지 않고 football-data.org 실제 결과, 정적 확인 대상, 공식 보고서 확인 안내, 내부 일정 계산으로 표시합니다.";
 
 export default function StoredMatchRecollectionPanel({
   matchId,
@@ -160,7 +163,7 @@ export default function StoredMatchRecollectionPanel({
     return () => window.clearTimeout(timer);
   }, [awayTeamId, awayTeamName, homeTeamId, homeTeamName, matchId]);
 
-  if (!state || (!state.actualMatch && !state.latestJob && !state.review && state.events.length === 0 && state.cardRecords.length === 0 && state.injuries.length === 0 && state.lineups.length === 0)) {
+  if (!state) {
     return null;
   }
 
@@ -196,6 +199,35 @@ export default function StoredMatchRecollectionPanel({
         <InfoCard label="API 통계" value={`${state.statistics.length}건 저장`} />
       </div>
 
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <FallbackInfo
+          title="카드 대체 처리"
+          body={
+            state.events.length > 0
+              ? "API-Football events 저장 데이터가 있으면 실제 카드 이벤트를 우선 표시합니다."
+              : "API-Football 2026 events 또는 fixtureId가 없어 실제 카드 이벤트를 직접 수집하지 못했습니다. 정적 카드 확인 대상과 공식 경기 보고서 확인 필요 상태를 표시합니다."
+          }
+        />
+        <FallbackInfo
+          title="부상 대체 처리"
+          body={
+            state.injuries.length > 0
+              ? "저장된 injuries/fallback 데이터가 있어 부상·결장 확인 대상으로 표시합니다."
+              : "API-Football 2026 injuries 접근이 제한되면 확인된 부상 없음으로 단정하지 않고 공식 부상 데이터 미제공 및 확인 필요로 표시합니다."
+          }
+        />
+        <FallbackInfo
+          title="징계 계산"
+          body="공식 카드 이벤트가 없으면 확정 징계를 단정하지 않습니다. 경고 누적 위험 구조와 레드카드/두 번째 경고 확인 필요 상태를 표시합니다."
+        />
+        <FallbackInfo
+          title="체력 계산"
+          body="체력은 API 직접 데이터가 없어도 이전/다음 경기 날짜, 휴식일, 일정 밀도, 경기장 확인 여부를 내부 계산 참고 지표로 표시합니다."
+        />
+      </div>
+
+      <p className="mt-4 rounded border border-amber-300/25 bg-amber-400/10 p-3 text-sm leading-6 text-amber-50/85">{fallbackReason}</p>
+
       {state.review ? (
         <p className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4 text-sm leading-6 text-white/75">
           {state.review.matchSummary}
@@ -224,6 +256,15 @@ export default function StoredMatchRecollectionPanel({
         </div>
       ) : null}
 
+      {state.cardRecords.length === 0 ? (
+        <div className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4">
+          <Badge tone="warning">카드 확인 대상</Badge>
+          <p className="mt-3 text-sm leading-6 text-white/65">
+            저장된 카드 이벤트가 없습니다. API-Football 2026 events가 제한되었거나 fixtureId가 없어 직접 수집하지 못한 상태이며, 공식 경기 보고서 또는 관리자 입력 후 실제 카드 기록으로 교체됩니다.
+          </p>
+        </div>
+      ) : null}
+
       {state.latestJob?.message ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{state.latestJob.message}</p> : null}
     </section>
   );
@@ -234,6 +275,15 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     <div className="rounded border border-white/10 bg-pitch-900/80 p-3">
       <p className="text-xs text-white/50">{label}</p>
       <p className="mt-2 break-words text-sm font-black leading-6 text-white">{value}</p>
+    </div>
+  );
+}
+
+function FallbackInfo({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded border border-white/10 bg-pitch-900/80 p-3">
+      <p className="text-sm font-black text-white">{title}</p>
+      <p className="mt-2 text-xs leading-5 text-white/62">{body}</p>
     </div>
   );
 }

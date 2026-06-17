@@ -38,6 +38,9 @@ export type GeminiAnalysisLog = {
   retryCount?: number;
   payloadBytes?: number | null;
   fallbackUsed?: boolean;
+  timeout?: boolean;
+  fallbackResultSaved?: boolean;
+  screenReflectionStatus?: "저장됨" | "fallback 저장됨" | "아직 없음";
   rawText?: string | null;
 };
 
@@ -70,5 +73,7 @@ export type GeminiProviderStatus = {
   screenReflectionStatus: "저장됨" | "fallback 저장됨" | "아직 없음";
   activeJobs: GeminiActiveJob[];
   logs: GeminiAnalysisLog[];
+  modelSelectionMessage: string;
+  modelSelectionError: string | null;
   message: string;
 };

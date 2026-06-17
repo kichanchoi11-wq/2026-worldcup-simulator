@@ -265,13 +265,13 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
     envelopeSnapshot("fixtures", "경기 일정/결과", matchesEnvelope, matches.length),
     envelopeSnapshot("standings", "조별 순위", standingsEnvelope, standings.length),
     envelopeSnapshot("teams", "팀 정보", teamsEnvelope, teams.length),
-    fallbackSnapshot("players", "선수 명단", fallbackResources.players.length, refreshedAt, "팀별 상세 선수 API는 호출 제한 보호를 위해 정적 스쿼드 fallback으로 유지합니다."),
-    fallbackSnapshot("coaches", "감독 정보", fallbackResources.coaches.length, refreshedAt, "API-Football coaches 데이터가 없을 때 검증된 정적 감독 정보를 표시합니다."),
-    fallbackSnapshot("lineups", "예상 라인업/포메이션", fallbackResources.lineups.length, refreshedAt, "경기별 lineups는 fixture ID 확인 후 제한적으로 갱신하고 현재는 예상 라인업 fallback을 표시합니다."),
-    fallbackSnapshot("events", "골/카드/교체 이벤트", fallbackResources.events.length, refreshedAt, "종료 또는 진행 중 fixture가 확인되면 events를 제한적으로 갱신합니다."),
-    fallbackSnapshot("injuries", "부상/징계", fallbackResources.injuries.length, refreshedAt, "공식 부상 API 데이터가 없을 때 선수 상태 fallback을 표시합니다."),
-    fallbackSnapshot("statistics", "경기/팀 통계", fallbackResources.statistics.length, refreshedAt, "경기별 statistics는 fixture ID 확인 후 제한적으로 갱신합니다."),
-    fallbackSnapshot("predictions", "승부 예측", fallbackResources.predictions.length, refreshedAt, "API-Football predictions가 없으면 내부 시뮬레이션 기반 예측을 표시합니다.")
+    fallbackSnapshot("players", "선수 명단", fallbackResources.players.length, refreshedAt, "API-Football 2026 선수 상세 응답이 없거나 제한되면 검증된 정적 스쿼드 fallback을 사용합니다."),
+    fallbackSnapshot("coaches", "감독 정보", fallbackResources.coaches.length, refreshedAt, "API-Football coaches/teamId 응답이 없으면 검증된 정적 감독 정보를 표시합니다."),
+    fallbackSnapshot("lineups", "예상 라인업/포메이션", fallbackResources.lineups.length, refreshedAt, "API-Football 2026 fixtureId가 없으면 lineups를 직접 호출할 수 없어 예상 라인업/포메이션 fallback을 표시합니다."),
+    fallbackSnapshot("events", "골/카드/교체 이벤트", fallbackResources.events.length, refreshedAt, "API-Football 무료 플랜에서 2026 events 접근이 제한되면 실제 카드 기록은 공식 보고서 확인 필요로 표시하고, 정적 카드 확인 대상만 유지합니다."),
+    fallbackSnapshot("injuries", "부상/징계", fallbackResources.injuries.length, refreshedAt, "API-Football 2026 injuries 접근이 제한되면 확인된 부상 없음으로 단정하지 않고 공식 부상 데이터 미제공 및 확인 필요 상태로 표시합니다."),
+    fallbackSnapshot("statistics", "경기/팀 통계", fallbackResources.statistics.length, refreshedAt, "API-Football 2026 statistics fixtureId가 없으면 경기 일정 기반 체력 내부 계산과 정적 경기 메타데이터를 표시합니다."),
+    fallbackSnapshot("predictions", "승부 예측", fallbackResources.predictions.length, refreshedAt, "API-Football predictions가 fixtureId 없이 불가능하면 내부 시뮬레이션 기반 예측과 fallback 사유를 표시합니다.")
   ];
   const cardRecords = buildCardRecords({ apiEvents: fallbackResources.events, matches, refreshedAt });
   const providerStatus = getFootballProviderStatus();
@@ -337,7 +337,7 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
       "risks",
       "카드/부상/징계/체력",
       cardRecords.length > 0 ? "partial" : "failed",
-      "API-Football 이벤트가 있으면 실제 카드 이벤트를 저장하고, 없으면 공식 기록 확인 대상자를 빈 화면 없이 표시합니다.",
+      "API-Football 2026 events/injuries/statistics가 제한되면 사유를 표시하고, 공식 기록 확인 대상·정적 리스크·일정 기반 체력 계산으로 빈 화면 없이 표시합니다.",
       cardRecords.length
     ),
     item(

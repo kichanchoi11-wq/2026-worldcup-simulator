@@ -41,8 +41,18 @@ function toneFromDiagnostic(status: DiagnosticStatus): Parameters<typeof Badge>[
 
 function callTone(call: ApiFootballDiagnosticCall): Parameters<typeof Badge>[0]["tone"] {
   if (call.ok) return "success";
+  if (call.classification === "plan-limited" || call.classification === "empty" || call.classification === "mapping-failed") return "warning";
   if (call.skipped) return "warning";
   return "danger";
+}
+
+function callStatusLabel(call: ApiFootballDiagnosticCall) {
+  if (call.ok) return "성공";
+  if (call.classification === "plan-limited") return "플랜 제한";
+  if (call.classification === "mapping-failed") return "매핑 실패";
+  if (call.classification === "empty") return "빈 응답";
+  if (call.skipped) return "건너뜀";
+  return "실패";
 }
 
 function latestCall(calls: ApiFootballDiagnosticCall[]) {
@@ -57,6 +67,29 @@ function sourceLabel(snapshot: ApiFootballResourceSnapshot | null, fallback: str
   if (!snapshot) return fallback;
   return `${snapshot.source}${snapshot.isFallbackData ? " fallback" : ""} · ${snapshot.count}개`;
 }
+
+function accessTone(access: string): Parameters<typeof Badge>[0]["tone"] {
+  if (access === "accessible") return "success";
+  if (access === "partial") return "warning";
+  if (access === "blocked") return "danger";
+  return "neutral";
+}
+
+const apiDiagnosisButtons = [
+  "API-Football 연결 테스트",
+  "API-Football 전체 진단",
+  "fixtures 동기화",
+  "standings 동기화",
+  "teams 동기화",
+  "players 동기화",
+  "coaches 동기화",
+  "lineups 동기화",
+  "events 동기화",
+  "injuries 동기화",
+  "statistics 동기화",
+  "predictions 동기화",
+  "API-Football 가능한 항목 전체 동기화"
+];
 
 function staleRunningJob(job: RecollectionJob) {
   if (job.status !== "실행 중" || !job.startedAt) return false;
@@ -276,7 +309,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {["API-Football 연결 테스트", "API-Football fixtures 테스트", "API-Football events 테스트", "API-Football lineups 테스트", "API-Football injuries 테스트", "API-Football statistics 테스트"].map((label) => (
+        {apiDiagnosisButtons.map((label) => (
           <button
             key={label}
             type="button"
@@ -318,6 +351,8 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard label="API-Football 키" value={apiDiagnosis ? (apiDiagnosis.keyConfigured ? `${apiDiagnosis.keyEnvName} 사용` : "서버 키 없음") : "진단 전"} />
+        <InfoCard label="base URL/호출 방식" value={apiDiagnosis ? `${apiDiagnosis.baseUrl} · ${apiDiagnosis.requestMode}` : "진단 전"} />
+        <InfoCard label="대상 시즌" value={apiDiagnosis ? `league=${apiDiagnosis.targetLeague}, season=${apiDiagnosis.targetSeason}` : "진단 전"} />
         <InfoCard label="Production/Runtime" value={apiDiagnosis ? `${apiDiagnosis.runtime.vercelEnv ?? "local"} · ${apiDiagnosis.runtime.isVercel ? "Vercel" : "local"}` : "진단 전"} />
         <InfoCard label="마지막 HTTP 상태" value={lastApiCall ? `${lastApiCall.endpoint}: ${lastApiCall.status ?? "없음"}` : "진단 전"} />
         <InfoCard label="마지막 오류" value={lastApiCall?.error ?? apiDiagnosis?.diagnosis[0] ?? "진단 전"} />
@@ -328,6 +363,54 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
       </div>
 
       {apiDiagnosis ? (
+        <>
+        {apiDiagnosis.fallbackStrategy.seasonAccessLimited ? (
+          <div className="mt-4 rounded border border-amber-300/35 bg-amber-400/10 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="warning">API-Football 2026 시즌 접근 제한 감지</Badge>
+              <Badge tone="neutral">{apiDiagnosis.fallbackStrategy.actual2026Source}</Badge>
+            </div>
+            <p className="mt-3 text-sm font-semibold leading-6 text-amber-50/85">
+              현재 API-Football 무료 플랜은 league={apiDiagnosis.targetLeague}, season={apiDiagnosis.targetSeason} 데이터에 접근할 수 없습니다.
+              {apiDiagnosis.fallbackStrategy.responseMessage ? ` API 응답: ${apiDiagnosis.fallbackStrategy.responseMessage}` : ""}
+            </p>
+            <div className="mt-3 grid gap-2 text-sm text-white/75 md:grid-cols-2">
+              <InfoLine label="2026 실제 데이터" value="football-data.org fallback 또는 정적 공식 대진 fallback을 사용합니다." />
+              <InfoLine label="API-Football 용도" value={apiDiagnosis.fallbackStrategy.apiFootballReferenceRange ?? "접근 가능한 과거 시즌 탐색 중"} />
+              <InfoLine label="detail skip 원인" value={apiDiagnosis.fallbackStrategy.skippedDetailReason ?? "fixtureId 확보됨"} />
+              <InfoLine label="체력 대체 처리" value={apiDiagnosis.fallbackStrategy.fitnessFallback} />
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              <FallbackBox title="카드" body={apiDiagnosis.fallbackStrategy.cardsFallback} />
+              <FallbackBox title="부상" body={apiDiagnosis.fallbackStrategy.injuriesFallback} />
+              <FallbackBox title="징계" body={apiDiagnosis.fallbackStrategy.disciplineFallback} />
+            </div>
+          </div>
+        ) : null}
+
+        {apiDiagnosis.seasonProbes.length > 0 ? (
+          <div className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4">
+            <h4 className="font-black text-white">API-Football 접근 가능 시즌 진단</h4>
+            <p className="mt-2 text-sm leading-6 text-white/60">
+              2026 시즌이 막힌 경우 2024, 2023, 2022 시즌을 샘플링해 API-Football을 과거 참고 데이터로 쓸 수 있는지 확인합니다.
+            </p>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              {apiDiagnosis.seasonProbes.map((probe) => (
+                <article key={probe.season} className="rounded border border-white/10 bg-white/[0.04] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-black text-white">{probe.season}</p>
+                    <Badge tone={accessTone(probe.access)}>{probe.access}</Badge>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-white/58">{probe.message}</p>
+                  <p className="mt-2 text-xs text-white/50">fixtureId {probe.fixtureId ?? "없음"} · teamId {probe.teamId ?? "없음"}</p>
+                  <p className="mt-2 text-xs leading-5 text-emerald-50/75">응답 가능: {probe.usableEndpoints.join(", ") || "없음"}</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-50/75">제한/빈 응답: {[...probe.blockedEndpoints, ...probe.emptyEndpoints].join(", ") || "없음"}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
             <h4 className="font-black text-white">API-Football 엔드포인트 결과</h4>
@@ -335,15 +418,17 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
               {apiDiagnosis.calls.map((call) => (
                 <div key={`${call.endpoint}-${call.url}`} className="rounded border border-white/10 bg-white/[0.04] p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge tone={callTone(call)}>{call.skipped ? "skipped" : call.ok ? "success" : "failed"}</Badge>
+                    <Badge tone={callTone(call)}>{callStatusLabel(call)}</Badge>
                     <span className="text-xs text-white/50">HTTP {call.status ?? "없음"}</span>
                   </div>
                   <p className="mt-2 font-black text-white">{call.endpoint}</p>
+                  {call.season ? <p className="mt-1 text-xs text-white/45">season {call.season}</p> : null}
                   <p className="mt-1 break-words text-xs text-white/45">{call.url}</p>
                   <p className="mt-2 text-xs text-white/60">
                     response {call.responseCount}개 · normalized {call.normalizedCount}개 · {call.responseLength} bytes
                   </p>
                   {call.error ? <p className="mt-2 text-xs leading-5 text-amber-50/80">{call.error}</p> : null}
+                  {call.replacementStrategy ? <p className="mt-2 text-xs leading-5 text-cyan-50/75">대체 처리: {call.replacementStrategy}</p> : null}
                 </div>
               ))}
             </div>
@@ -363,6 +448,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
             </div>
           </div>
         </div>
+        </>
       ) : null}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
@@ -384,6 +470,27 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
             <InfoLine label="마지막 실패" value={geminiStatus?.lastFailureMessage ?? geminiDiagnosis?.call?.error ?? "없음"} />
             <InfoLine label="결과 저장/반영" value={geminiStatus?.screenReflectionStatus ?? "진단 전"} />
           </div>
+          {geminiStatus?.logs.length ? (
+            <div className="mt-3 grid gap-2">
+              {geminiStatus.logs.slice(0, 5).map((log) => (
+                <div key={log.id} className="rounded border border-white/10 bg-white/[0.04] p-3 text-xs leading-5 text-white/70">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={log.status === "success" || log.status === "cache" ? "success" : log.status === "fallback" ? "warning" : "danger"}>
+                      {log.status}
+                    </Badge>
+                    <span className="font-black text-white">{log.target}</span>
+                  </div>
+                  <p className="mt-2">{log.message}</p>
+                  <p className="mt-1 text-white/50">
+                    모델 {log.model ?? geminiStatus.model} · fallback {geminiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
+                  </p>
+                  <p className="mt-1 text-white/50">
+                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || geminiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? geminiStatus.screenReflectionStatus}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
           <h4 className="font-black text-white">데이터 반영 상태</h4>
@@ -440,6 +547,15 @@ function InfoLine({ label, value }: { label: string; value: string }) {
     <div className="grid grid-cols-[120px_1fr] gap-3 rounded border border-white/10 bg-white/[0.04] p-2">
       <span className="text-white/45">{label}</span>
       <span className="break-words font-semibold text-white/78">{value}</span>
+    </div>
+  );
+}
+
+function FallbackBox({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded border border-white/10 bg-pitch-900/70 p-3">
+      <p className="text-sm font-black text-white">{title}</p>
+      <p className="mt-2 text-xs leading-5 text-white/65">{body}</p>
     </div>
   );
 }

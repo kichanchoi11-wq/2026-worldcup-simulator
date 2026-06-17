@@ -310,12 +310,25 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
             <span>실패 {geminiStatus.failureCount}건</span>
             <span>마지막 호출 {formatDate(geminiStatus.lastCallAt)}</span>
           </div>
-          <p className="mt-3 text-sm leading-6 text-violet-50/75">{geminiStatus.message}</p>
+          <p className="mt-3 text-sm leading-6 text-violet-50/75">{geminiStatus.modelSelectionMessage}</p>
+          <p className="mt-1 text-sm leading-6 text-violet-50/65">{geminiStatus.message}</p>
           {geminiStatus.logs.length > 0 ? (
             <ul className="mt-3 grid gap-2 text-xs text-violet-50/70 md:grid-cols-2">
               {geminiStatus.logs.slice(0, 4).map((log) => (
                 <li key={log.id} className="rounded border border-white/10 bg-pitch-900/70 p-2">
-                  {log.target} · {log.status} · {formatDate(log.createdAt)}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={log.status === "success" || log.status === "cache" ? "success" : log.status === "fallback" ? "warning" : "danger"}>
+                      {log.status}
+                    </Badge>
+                    <span className="font-black text-white">{log.target}</span>
+                  </div>
+                  <p className="mt-2">{log.message}</p>
+                  <p className="mt-1 text-violet-50/45">
+                    모델 {log.model ?? geminiStatus.model} · fallback {geminiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
+                  </p>
+                  <p className="mt-1 text-violet-50/45">
+                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || geminiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? geminiStatus.screenReflectionStatus} · {formatDate(log.createdAt)}
+                  </p>
                 </li>
               ))}
             </ul>

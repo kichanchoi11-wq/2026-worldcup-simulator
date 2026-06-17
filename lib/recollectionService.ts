@@ -160,7 +160,7 @@ async function collectFixtureResources(matches: FootballMatch[], scope: Recollec
         dataQuality: "static-default",
         count: 0,
         rawData: null,
-        message: "API-Football fixture id가 없어 해당 세부 리소스 호출을 건너뛰었습니다."
+        message: "API-Football 2026 fixtureId가 없어 해당 세부 리소스 호출을 건너뛰었습니다. 원인: 무료 플랜에서 2026 fixtures 접근 제한 또는 매핑 실패. 대체: football-data.org 실제 결과, 정적 리스크, Gemini/fallback 설명을 사용합니다."
       },
       result: {
         id: `${resource}-fixture-skip`,
@@ -168,7 +168,7 @@ async function collectFixtureResources(matches: FootballMatch[], scope: Recollec
         status: "skipped",
         count: 0,
         source: "static",
-        message: "fixture id가 확인되면 자동으로 다시 수집됩니다."
+        message: "fixtureId가 확인되면 API-Football 세부 endpoint를 다시 수집합니다. 지금은 대체 처리 사유를 화면에 표시합니다."
       }
     });
 

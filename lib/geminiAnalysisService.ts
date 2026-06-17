@@ -27,8 +27,9 @@ export type GeminiMatchReviewResult = {
   review: MatchReview | null;
 };
 
-const defaultGeminiModel = "gemini-3.5-flash";
-const defaultGeminiFallbackModel = "gemini-2.5-flash";
+const stableGeminiModelCandidates = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"] as const;
+const defaultGeminiModel = stableGeminiModelCandidates[0];
+const defaultGeminiFallbackModel = stableGeminiModelCandidates[1];
 const defaultGeminiTimeoutMs = 30_000;
 const geminiReviewCache = new Map<string, GeminiMatchReviewResult>();
 
@@ -192,15 +193,45 @@ function parseJsonObject<T>(text: string): T | null {
   return null;
 }
 
+function configuredPrimaryModel() {
+  return process.env.GEMINI_MODEL || process.env.GEMINI_PRIMARY_MODEL || null;
+}
+
 function getPrimaryGeminiModel() {
-  return process.env.GEMINI_MODEL || process.env.GEMINI_PRIMARY_MODEL || defaultGeminiModel;
+  const configured = configuredPrimaryModel();
+
+  if (configured && configured !== "auto") {
+    return configured;
+  }
+
+  return defaultGeminiModel;
 }
 
 function getFallbackGeminiModel() {
   const primary = getPrimaryGeminiModel();
-  const fallback = process.env.GEMINI_FALLBACK_MODEL || defaultGeminiFallbackModel;
+  const fallback = process.env.GEMINI_FALLBACK_MODEL || stableGeminiModelCandidates.find((model) => model !== primary) || defaultGeminiFallbackModel;
 
-  return fallback === primary ? "gemini-2.5-pro" : fallback;
+  return fallback === primary ? stableGeminiModelCandidates.find((model) => model !== primary) ?? defaultGeminiFallbackModel : fallback;
+}
+
+function getGeminiModelCandidates() {
+  const configured = configuredPrimaryModel();
+  const preferred = configured && configured !== "auto" ? [configured] : [];
+  return Array.from(new Set([...preferred, getPrimaryGeminiModel(), getFallbackGeminiModel(), ...stableGeminiModelCandidates]));
+}
+
+function getGeminiModelSelectionMessage() {
+  const configured = configuredPrimaryModel();
+
+  if (configured === "auto") {
+    return `GEMINI_MODEL=auto로 설정되어 안정 후보(${stableGeminiModelCandidates.join(", ")}) 순서로 시도합니다.`;
+  }
+
+  if (configured) {
+    return `GEMINI_MODEL/GEMINI_PRIMARY_MODEL=${configured}를 우선 사용하고 실패하면 fallback 후보로 재시도합니다.`;
+  }
+
+  return `환경변수 모델이 없어 안정 후보(${stableGeminiModelCandidates.join(", ")}) 순서로 자동 선택합니다.`;
 }
 
 export function getGeminiTimeoutMs() {
@@ -224,14 +255,14 @@ function requestBody(prompt: string) {
 }
 
 async function callGeminiText(prompt: string, context: { kind: GeminiAnalysisKind; target: string }): Promise<
-  | { ok: true; model: string; text: string; payloadBytes: number; fallbackUsed: boolean; retryCount: number }
-  | { ok: false; model: string; message: string; httpStatus: number | null; payloadBytes: number; fallbackUsed: boolean; retryCount: number }
+  | { ok: true; model: string; text: string; payloadBytes: number; fallbackUsed: boolean; retryCount: number; timeout: boolean }
+  | { ok: false; model: string; message: string; httpStatus: number | null; payloadBytes: number; fallbackUsed: boolean; retryCount: number; timeout: boolean }
 > {
   const apiKey = process.env.GEMINI_API_KEY;
-  const models = Array.from(new Set([getPrimaryGeminiModel(), getFallbackGeminiModel()].filter(Boolean)));
+  const models = getGeminiModelCandidates();
   const body = requestBody(prompt);
   const payloadBytes = new TextEncoder().encode(body).length;
-  let lastFailure: { model: string; message: string; httpStatus: number | null; fallbackUsed: boolean; retryCount: number } | null = null;
+  let lastFailure: { model: string; message: string; httpStatus: number | null; fallbackUsed: boolean; retryCount: number; timeout: boolean } | null = null;
 
   if (!apiKey) {
     return {
@@ -241,7 +272,8 @@ async function callGeminiText(prompt: string, context: { kind: GeminiAnalysisKin
       httpStatus: null,
       payloadBytes,
       fallbackUsed: false,
-      retryCount: 0
+      retryCount: 0,
+      timeout: false
     };
   }
 
@@ -271,7 +303,8 @@ async function callGeminiText(prompt: string, context: { kind: GeminiAnalysisKin
           message: `Gemini ${model} 응답 오류(${response.status})${responseText ? `: ${responseText.slice(0, 220)}` : ""}`,
           httpStatus: response.status,
           fallbackUsed: index > 0,
-          retryCount: index
+          retryCount: index,
+          timeout: false
         };
         continue;
       }
@@ -288,18 +321,21 @@ async function callGeminiText(prompt: string, context: { kind: GeminiAnalysisKin
         text,
         payloadBytes,
         fallbackUsed: index > 0,
-        retryCount: index
+        retryCount: index,
+        timeout: false
       };
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = error instanceof Error && error.name === "AbortError";
+      if (timeoutError) {
         getGeminiState().timeoutCount += 1;
       }
       lastFailure = {
         model,
-        message: error instanceof Error && error.name === "AbortError" ? `Gemini ${model} 호출 timeout` : `Gemini ${model} 호출 실패`,
+        message: timeoutError ? `Gemini ${model} 호출 timeout` : error instanceof Error ? `Gemini ${model} 호출 실패: ${error.message}` : `Gemini ${model} 호출 실패`,
         httpStatus: null,
         fallbackUsed: index > 0,
-        retryCount: index
+        retryCount: index,
+        timeout: timeoutError
       };
     } finally {
       clearTimeout(timeout);
@@ -314,7 +350,8 @@ async function callGeminiText(prompt: string, context: { kind: GeminiAnalysisKin
     httpStatus: lastFailure?.httpStatus ?? null,
     payloadBytes,
     fallbackUsed: true,
-    retryCount: lastFailure?.retryCount ?? 0
+    retryCount: lastFailure?.retryCount ?? 0,
+    timeout: lastFailure?.timeout ?? false
   };
 }
 
@@ -399,6 +436,8 @@ export function getGeminiProviderStatus(): GeminiProviderStatus {
     screenReflectionStatus: state.resultSaveSuccess ? "저장됨" : state.fallbackCount > 0 ? "fallback 저장됨" : "아직 없음",
     activeJobs,
     logs: state.logs,
+    modelSelectionMessage: getGeminiModelSelectionMessage(),
+    modelSelectionError: null,
     message: enabled
       ? "Gemini API 키가 서버 환경변수에 있어 서버 Route에서만 호출합니다."
       : "GEMINI_API_KEY가 없어 내부 규칙 기반 분석으로 fallback합니다."
@@ -440,7 +479,10 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
       httpStatus: gemini.httpStatus,
       retryCount: gemini.retryCount,
       payloadBytes: gemini.payloadBytes,
-      fallbackUsed: true
+      fallbackUsed: true,
+      timeout: gemini.timeout,
+      fallbackResultSaved: true,
+      screenReflectionStatus: "fallback 저장됨"
     });
     return fallback;
   }
@@ -461,6 +503,9 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
       retryCount: gemini.retryCount,
       payloadBytes: gemini.payloadBytes,
       fallbackUsed: true,
+      timeout: false,
+      fallbackResultSaved: true,
+      screenReflectionStatus: "fallback 저장됨",
       rawText: fallback.rawText
     });
     return fallback;
@@ -480,7 +525,10 @@ export async function createGeminiAnalysis(input: GeminiAnalysisInput): Promise<
     model: gemini.model,
     retryCount: gemini.retryCount,
     payloadBytes: gemini.payloadBytes,
-    fallbackUsed: gemini.fallbackUsed
+    fallbackUsed: gemini.fallbackUsed,
+    timeout: false,
+    fallbackResultSaved: true,
+    screenReflectionStatus: "저장됨"
   });
   return result;
 }
@@ -689,7 +737,10 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       httpStatus: gemini.httpStatus,
       retryCount: gemini.retryCount,
       payloadBytes: gemini.payloadBytes,
-      fallbackUsed: true
+      fallbackUsed: true,
+      timeout: gemini.timeout,
+      fallbackResultSaved: true,
+      screenReflectionStatus: "fallback 저장됨"
     });
     return result;
   }
@@ -715,6 +766,9 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
       retryCount: gemini.retryCount,
       payloadBytes: gemini.payloadBytes,
       fallbackUsed: true,
+      timeout: false,
+      fallbackResultSaved: true,
+      screenReflectionStatus: "fallback 저장됨",
       rawText: gemini.text.slice(0, 1200)
     });
     return result;
@@ -739,7 +793,10 @@ export async function createGeminiMatchReview(pageData: MatchPageData): Promise<
     model: gemini.model,
     retryCount: gemini.retryCount,
     payloadBytes: gemini.payloadBytes,
-    fallbackUsed: gemini.fallbackUsed
+    fallbackUsed: gemini.fallbackUsed,
+    timeout: false,
+    fallbackResultSaved: true,
+    screenReflectionStatus: "저장됨"
   });
   return result;
 }
