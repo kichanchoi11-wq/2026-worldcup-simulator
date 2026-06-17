@@ -205,7 +205,7 @@ function getFallbackGeminiModel() {
 
 export function getGeminiTimeoutMs() {
   const value = Number(process.env.GEMINI_TIMEOUT_MS);
-  return Number.isFinite(value) && value >= 3_000 ? value : defaultGeminiTimeoutMs;
+  return Number.isFinite(value) && value >= defaultGeminiTimeoutMs ? value : defaultGeminiTimeoutMs;
 }
 
 function requestBody(prompt: string) {
