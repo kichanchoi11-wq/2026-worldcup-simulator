@@ -8,7 +8,6 @@ import type {
   ApiFootballDiagnosticCall,
   ApiFootballEndpointStatus,
   ApiFootballFallbackStrategy,
-  ApiFootballSeasonProbe,
   MatchIdMapping
 } from "@/types/diagnostics";
 
@@ -16,7 +15,6 @@ export const dynamic = "force-dynamic";
 
 const apiFootballBaseUrl = "https://v3.football.api-sports.io";
 const aliases = ["API_FOOTBALL_KEY", "VITE_API_FOOTBALL_KEY", "RAPIDAPI_KEY", "X_RAPIDAPI_KEY"] as const;
-const candidateReferenceSeasons = [2024, 2023, 2022] as const;
 const planLimitPattern = /Free plans do not have access to this season|try from 2022 to 2024/i;
 
 function nowIso() {
@@ -188,7 +186,7 @@ async function callApiFootball(endpoint: string, path: string, apiKey: string | 
           ? "HTTP 응답은 성공했지만 response 배열이 비어 있어 화면에 반영할 데이터가 없습니다."
           : null,
       replacementStrategy: planLimited
-        ? "2026 실제 경기/순위는 football-data.org 또는 정적 공식 대진 fallback을 사용하고, API-Football은 접근 가능한 과거 시즌 참고 데이터로만 활용합니다."
+        ? "2026 북중미 월드컵 데이터만 반영합니다. API-Football 2026 접근이 제한되면 football-data.org 또는 정적 공식 대진 fallback을 사용하고, 과거 시즌 데이터는 호출하거나 반영하지 않습니다."
         : classification === "empty"
           ? "캐시, football-data.org, 정적 fallback 또는 내부 계산 결과를 표시합니다."
           : null,
@@ -340,97 +338,21 @@ function teamIdFromCall(call: ApiFootballDiagnosticCall) {
   );
 }
 
-function endpointSummary(calls: ApiFootballDiagnosticCall[]) {
-  return {
-    usableEndpoints: calls.filter((call) => call.ok).map((call) => call.endpoint),
-    blockedEndpoints: calls.filter((call) => call.classification === "plan-limited").map((call) => call.endpoint),
-    emptyEndpoints: calls.filter((call) => call.classification === "empty").map((call) => call.endpoint),
-    skippedEndpoints: calls.filter((call) => call.skipped || call.classification === "mapping-failed").map((call) => call.endpoint)
-  };
-}
-
-async function probeSeason(season: number, league: string, apiKey: string | undefined): Promise<ApiFootballSeasonProbe> {
-  const calls: ApiFootballDiagnosticCall[] = [];
-  const fixtures = await callApiFootball("fixtures", `fixtures?league=${league}&season=${season}`, apiKey, season);
-  calls.push(fixtures);
-  calls.push(await callApiFootball("standings", `standings?league=${league}&season=${season}`, apiKey, season));
-  const teams = await callApiFootball("teams", `teams?league=${league}&season=${season}`, apiKey, season);
-  calls.push(teams);
-  calls.push(await callApiFootball("players", `players?league=${league}&season=${season}&page=1`, apiKey, season));
-  calls.push(await callApiFootball("injuries", `injuries?league=${league}&season=${season}`, apiKey, season));
-
-  const fixtureId = fixtureIdFromCall(fixtures);
-  const teamId = teamIdFromCall(teams);
-
-  if (teamId) {
-    calls.push(await callApiFootball("coaches", `coachs?team=${teamId}`, apiKey, season));
-  } else {
-    calls.push(skippedDetailCall("coaches", `coachs?team={teamId}&season=${season}`, `API-Football ${season} teamId가 없어 coaches endpoint를 호출하지 않았습니다.`, season));
-  }
-
-  if (fixtureId) {
-    calls.push(await callApiFootball("events", `fixtures/events?fixture=${fixtureId}`, apiKey, season));
-    calls.push(await callApiFootball("lineups", `fixtures/lineups?fixture=${fixtureId}`, apiKey, season));
-    calls.push(await callApiFootball("statistics", `fixtures/statistics?fixture=${fixtureId}`, apiKey, season));
-    calls.push(await callApiFootball("predictions", `predictions?fixture=${fixtureId}`, apiKey, season));
-  } else {
-    const reason = `API-Football ${season} fixtureId가 없어 events/lineups/statistics/predictions 세부 endpoint를 호출하지 않았습니다.`;
-    calls.push(skippedDetailCall("events", "fixtures/events?fixture={fixtureId}", reason, season));
-    calls.push(skippedDetailCall("lineups", "fixtures/lineups?fixture={fixtureId}", reason, season));
-    calls.push(skippedDetailCall("statistics", "fixtures/statistics?fixture={fixtureId}", reason, season));
-    calls.push(skippedDetailCall("predictions", "predictions?fixture={fixtureId}", reason, season));
-  }
-
-  const summary = endpointSummary(calls);
-  const access =
-    summary.usableEndpoints.length > 0 && summary.blockedEndpoints.length === 0
-      ? "accessible"
-      : summary.usableEndpoints.length > 0
-        ? "partial"
-        : summary.blockedEndpoints.length > 0
-          ? "blocked"
-          : "unavailable";
-
-  return {
-    season,
-    access,
-    fixtureId,
-    teamId,
-    ...summary,
-    calls,
-    message:
-      access === "accessible"
-        ? `${season} 시즌은 API-Football에서 접근 가능한 endpoint가 확인됐습니다.`
-        : access === "partial"
-          ? `${season} 시즌은 일부 endpoint만 접근 가능합니다.`
-          : access === "blocked"
-            ? `${season} 시즌 접근 제한 메시지가 감지되었습니다.`
-            : `${season} 시즌에서 사용할 수 있는 응답을 찾지 못했습니다.`
-  };
-}
-
 function createFallbackStrategy(params: {
   targetSeason: string;
   planLimited: boolean;
   planLimitMessage: string | null;
-  seasonProbes: ApiFootballSeasonProbe[];
   fixtureId: number | null;
 }): ApiFootballFallbackStrategy {
-  const accessibleSeasons = params.seasonProbes.filter((probe) => probe.access === "accessible" || probe.access === "partial").map((probe) => probe.season);
   const targetIs2026 = params.targetSeason === "2026";
   const limited = params.planLimited && targetIs2026;
 
   return {
     seasonAccessLimited: limited,
-    responseMessage: params.planLimitMessage,
+    responseMessage: limited ? "API-Football 무료 플랜에서 2026 시즌 접근 제한을 반환했습니다." : params.planLimitMessage,
     actual2026Source: limited ? "football-data.org fallback" : params.fixtureId ? "api-football" : "static official bracket fallback",
-    apiFootballReferenceRange: accessibleSeasons.length > 0 ? `${Math.min(...accessibleSeasons)}~${Math.max(...accessibleSeasons)} 접근 가능 시즌` : null,
-    apiFootballReferencePurpose: [
-      "대표팀/선수/감독의 과거 경기 참고",
-      "과거 카드·라인업·통계 패턴 참고",
-      "감독/포메이션/전술 설명의 보조 입력",
-      "예측 모델의 보조 지표"
-    ],
+    worldCup2026Only: true,
+    apiFootballUsagePolicy: "2026 북중미 월드컵 데이터만 반영합니다. API-Football 응답이 과거 시즌을 안내해도 과거 시즌 데이터는 호출·저장·화면 반영하지 않습니다.",
     skippedDetailReason: params.fixtureId
       ? null
       : limited
@@ -445,7 +367,7 @@ function createFallbackStrategy(params: {
     fitnessFallback:
       "체력은 API 데이터가 없어도 경기 일정 기반 휴식일, 경기 간격, 일정 밀도, 이동/경기장 확인 여부를 내부 계산으로 표시합니다.",
     screenMessage: limited
-      ? "API-Football 2026 시즌 접근 제한을 감지했습니다. 2026 실제 경기/순위는 football-data.org 또는 정적 공식 대진 fallback을 쓰고, API-Football은 접근 가능한 과거 시즌 참고 데이터로만 사용합니다."
+      ? "API-Football 2026 시즌 접근 제한을 감지했습니다. 2026 실제 경기/순위는 football-data.org 또는 정적 공식 대진 fallback만 사용하고, 과거 시즌 데이터는 절대 반영하지 않습니다."
       : "API-Football 2026 직접 접근 제한은 이번 진단에서 확정되지 않았습니다. 사용할 수 없는 endpoint는 캐시/fallback 사유를 함께 표시합니다."
   };
 }
@@ -504,22 +426,14 @@ export async function POST(request: Request) {
   }
 
   const currentPlanLimitMessage = calls.find((call) => call.classification === "plan-limited")?.error ?? null;
-  const seasonProbes = currentPlanLimitMessage
-    ? await Promise.all(candidateReferenceSeasons.map((candidateSeason) => probeSeason(candidateSeason, league, apiKey)))
-    : [];
   const fallbackStrategy = createFallbackStrategy({
     targetSeason: season,
     planLimited: Boolean(currentPlanLimitMessage),
     planLimitMessage: currentPlanLimitMessage,
-    seasonProbes,
     fixtureId
   });
   const matchMappings = buildMappings(fixtures);
   const apiSuccesses = calls.filter((call) => call.ok).length;
-  const accessibleProbeSummary =
-    seasonProbes.length > 0
-      ? seasonProbes.map((probe) => `${probe.season}: ${probe.access}(${probe.usableEndpoints.join(", ") || "응답 없음"})`).join(" / ")
-      : "2026 접근 제한이 확정될 때 2024/2023/2022 자동 탐색을 실행합니다.";
   const diagnosis = [
     apiKey ? "API_FOOTBALL_KEY는 서버 환경변수에서 읽혔습니다." : "API_FOOTBALL_KEY가 없습니다. 이 환경에서는 API-Football 대신 fallback만 사용할 수 있습니다.",
     "요청은 API-SPORTS direct 방식(x-apisports-key 헤더)으로만 수행했습니다. RapidAPI 헤더는 사용하지 않습니다.",
@@ -533,7 +447,7 @@ export async function POST(request: Request) {
       ? "API-Football 2026 시즌 접근 제한 감지: 현재 무료 플랜은 league=1, season=2026 데이터를 직접 수집할 수 없습니다."
       : "무료 플랜 제한 메시지는 이번 진단 응답에서 직접 감지되지 않았습니다.",
     fallbackStrategy.screenMessage,
-    `API-Football 접근 가능 시즌 진단: ${accessibleProbeSummary}`,
+    "과거 시즌 자동 탐색과 화면 반영은 비활성화했습니다. 관리자 화면과 저장소에는 2026 북중미 월드컵 데이터만 사용합니다.",
     providerStatus.apiFootball.blocked
       ? "오늘 API-Football soft limit에 도달해 추가 호출이 차단됩니다."
       : `오늘 호출량은 ${providerStatus.apiFootball.used}/${providerStatus.apiFootball.limit}회입니다.`
@@ -565,7 +479,6 @@ export async function POST(request: Request) {
     targetLeague: league,
     targetSeason: season,
     calls,
-    seasonProbes,
     fallbackStrategy,
     matchMappings,
     dataReflection: {
@@ -576,7 +489,7 @@ export async function POST(request: Request) {
       reflectedCount,
       lastReflectedAt: nowIso(),
       message: fallbackStrategy.seasonAccessLimited
-        ? "2026 API-Football 제한을 감지했고, 관리자 패널이 fallback 전략과 접근 가능한 과거 시즌 진단을 저장해 화면에 표시합니다."
+        ? "2026 API-Football 제한을 감지했고, 관리자 패널이 2026 전용 fallback 전략을 저장해 화면에 표시합니다. 과거 시즌 데이터는 저장하거나 반영하지 않습니다."
         : "이 진단 Route는 원본 수집/정규화 상태를 반환하며, 관리자 패널이 결과를 localStorage에 저장해 화면에 표시합니다."
     },
     diagnosis,

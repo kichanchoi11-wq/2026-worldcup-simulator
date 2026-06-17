@@ -55,6 +55,14 @@ function callStatusLabel(call: ApiFootballDiagnosticCall) {
   return "실패";
 }
 
+function displayApiMessage(value: string | null | undefined) {
+  if (!value) return null;
+  if (/Free plans do not have access to this season|try from 2022 to 2024/i.test(value)) {
+    return "API-Football 무료 플랜에서 2026 시즌 접근 제한을 반환했습니다. 과거 시즌 데이터는 사용하지 않습니다.";
+  }
+  return value;
+}
+
 function latestCall(calls: ApiFootballDiagnosticCall[]) {
   return [...calls].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime())[0] ?? null;
 }
@@ -66,13 +74,6 @@ function resourceByName(resources: ApiFootballResourceSnapshot[], resource: stri
 function sourceLabel(snapshot: ApiFootballResourceSnapshot | null, fallback: string) {
   if (!snapshot) return fallback;
   return `${snapshot.source}${snapshot.isFallbackData ? " fallback" : ""} · ${snapshot.count}개`;
-}
-
-function accessTone(access: string): Parameters<typeof Badge>[0]["tone"] {
-  if (access === "accessible") return "success";
-  if (access === "partial") return "warning";
-  if (access === "blocked") return "danger";
-  return "neutral";
 }
 
 const apiDiagnosisButtons = [
@@ -285,7 +286,9 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
 
   const lastApiCall = latestCall(apiDiagnosis?.calls ?? []);
   const footballDataFallbacks = resources.filter((resource) => resource.source === "football-data.org" || resource.source === "cache" || resource.isFallbackData);
-  const failedApiCalls = apiDiagnosis?.calls.filter((call) => !call.ok) ?? [];
+  const failedApiCalls = (apiDiagnosis?.calls ?? []).filter((call) => !call.ok);
+  const fallbackStrategy = apiDiagnosis?.fallbackStrategy ?? null;
+  const dataReflection = apiDiagnosis?.dataReflection ?? null;
 
   return (
     <section className="rounded border border-emerald-300/25 bg-emerald-400/10 p-5 shadow-panel">
@@ -351,62 +354,39 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard label="API-Football 키" value={apiDiagnosis ? (apiDiagnosis.keyConfigured ? `${apiDiagnosis.keyEnvName} 사용` : "서버 키 없음") : "진단 전"} />
-        <InfoCard label="base URL/호출 방식" value={apiDiagnosis ? `${apiDiagnosis.baseUrl} · ${apiDiagnosis.requestMode}` : "진단 전"} />
-        <InfoCard label="대상 시즌" value={apiDiagnosis ? `league=${apiDiagnosis.targetLeague}, season=${apiDiagnosis.targetSeason}` : "진단 전"} />
-        <InfoCard label="Production/Runtime" value={apiDiagnosis ? `${apiDiagnosis.runtime.vercelEnv ?? "local"} · ${apiDiagnosis.runtime.isVercel ? "Vercel" : "local"}` : "진단 전"} />
+        <InfoCard label="base URL/호출 방식" value={apiDiagnosis ? `${apiDiagnosis.baseUrl ?? "https://v3.football.api-sports.io"} · ${apiDiagnosis.requestMode ?? "API-SPORTS direct"}` : "진단 전"} />
+        <InfoCard label="대상 시즌" value={apiDiagnosis ? `league=${apiDiagnosis.targetLeague ?? "1"}, season=${apiDiagnosis.targetSeason ?? "2026"}` : "진단 전"} />
+        <InfoCard label="Production/Runtime" value={apiDiagnosis ? `${apiDiagnosis.runtime?.vercelEnv ?? "local"} · ${apiDiagnosis.runtime?.isVercel ? "Vercel" : "local"}` : "진단 전"} />
         <InfoCard label="마지막 HTTP 상태" value={lastApiCall ? `${lastApiCall.endpoint}: ${lastApiCall.status ?? "없음"}` : "진단 전"} />
-        <InfoCard label="마지막 오류" value={lastApiCall?.error ?? apiDiagnosis?.diagnosis[0] ?? "진단 전"} />
-        <InfoCard label="오늘 호출 수" value={`${apiDiagnosis?.usage.used ?? providerStatus?.apiFootball.used ?? 0}/${apiDiagnosis?.usage.limit ?? providerStatus?.apiFootball.limit ?? 100}회`} />
-        <InfoCard label="남은 호출 수" value={`${apiDiagnosis?.usage.remaining ?? providerStatus?.apiFootball.remaining ?? 100}회`} />
+        <InfoCard label="마지막 오류" value={displayApiMessage(lastApiCall?.error) ?? apiDiagnosis?.diagnosis?.[0] ?? "진단 전"} />
+        <InfoCard label="오늘 호출 수" value={`${apiDiagnosis?.usage?.used ?? providerStatus?.apiFootball?.used ?? 0}/${apiDiagnosis?.usage?.limit ?? providerStatus?.apiFootball?.limit ?? 100}회`} />
+        <InfoCard label="남은 호출 수" value={`${apiDiagnosis?.usage?.remaining ?? providerStatus?.apiFootball?.remaining ?? 100}회`} />
         <InfoCard label="마지막 엔드포인트" value={lastApiCall?.url ?? "진단 전"} />
-        <InfoCard label="화면 반영" value={reflectionStatus ? `${reflectionStatus.matches}경기 · ${reflectionStatus.resourceSnapshots}리소스` : apiDiagnosis?.dataReflection.message ?? "진단 전"} />
+        <InfoCard label="화면 반영" value={reflectionStatus ? `${reflectionStatus.matches}경기 · ${reflectionStatus.resourceSnapshots}리소스` : dataReflection?.message ?? "진단 전"} />
       </div>
 
       {apiDiagnosis ? (
         <>
-        {apiDiagnosis.fallbackStrategy.seasonAccessLimited ? (
+        {fallbackStrategy?.seasonAccessLimited ? (
           <div className="mt-4 rounded border border-amber-300/35 bg-amber-400/10 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warning">API-Football 2026 시즌 접근 제한 감지</Badge>
-              <Badge tone="neutral">{apiDiagnosis.fallbackStrategy.actual2026Source}</Badge>
+              <Badge tone="neutral">{fallbackStrategy.actual2026Source}</Badge>
             </div>
             <p className="mt-3 text-sm font-semibold leading-6 text-amber-50/85">
-              현재 API-Football 무료 플랜은 league={apiDiagnosis.targetLeague}, season={apiDiagnosis.targetSeason} 데이터에 접근할 수 없습니다.
-              {apiDiagnosis.fallbackStrategy.responseMessage ? ` API 응답: ${apiDiagnosis.fallbackStrategy.responseMessage}` : ""}
+              현재 API-Football 무료 플랜은 league={apiDiagnosis.targetLeague ?? "1"}, season={apiDiagnosis.targetSeason ?? "2026"} 데이터에 접근할 수 없습니다.
+              {displayApiMessage(fallbackStrategy.responseMessage) ? ` API 응답: ${displayApiMessage(fallbackStrategy.responseMessage)}` : ""}
             </p>
             <div className="mt-3 grid gap-2 text-sm text-white/75 md:grid-cols-2">
               <InfoLine label="2026 실제 데이터" value="football-data.org fallback 또는 정적 공식 대진 fallback을 사용합니다." />
-              <InfoLine label="API-Football 용도" value={apiDiagnosis.fallbackStrategy.apiFootballReferenceRange ?? "접근 가능한 과거 시즌 탐색 중"} />
-              <InfoLine label="detail skip 원인" value={apiDiagnosis.fallbackStrategy.skippedDetailReason ?? "fixtureId 확보됨"} />
-              <InfoLine label="체력 대체 처리" value={apiDiagnosis.fallbackStrategy.fitnessFallback} />
+              <InfoLine label="API-Football 정책" value={fallbackStrategy.apiFootballUsagePolicy ?? "2026 북중미 월드컵 데이터만 반영하고 과거 시즌 데이터는 반영하지 않습니다."} />
+              <InfoLine label="detail skip 원인" value={fallbackStrategy.skippedDetailReason ?? "fixtureId 확보됨"} />
+              <InfoLine label="체력 대체 처리" value={fallbackStrategy.fitnessFallback ?? "경기 일정 기반 내부 계산을 사용합니다."} />
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-3">
-              <FallbackBox title="카드" body={apiDiagnosis.fallbackStrategy.cardsFallback} />
-              <FallbackBox title="부상" body={apiDiagnosis.fallbackStrategy.injuriesFallback} />
-              <FallbackBox title="징계" body={apiDiagnosis.fallbackStrategy.disciplineFallback} />
-            </div>
-          </div>
-        ) : null}
-
-        {apiDiagnosis.seasonProbes.length > 0 ? (
-          <div className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4">
-            <h4 className="font-black text-white">API-Football 접근 가능 시즌 진단</h4>
-            <p className="mt-2 text-sm leading-6 text-white/60">
-              2026 시즌이 막힌 경우 2024, 2023, 2022 시즌을 샘플링해 API-Football을 과거 참고 데이터로 쓸 수 있는지 확인합니다.
-            </p>
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
-              {apiDiagnosis.seasonProbes.map((probe) => (
-                <article key={probe.season} className="rounded border border-white/10 bg-white/[0.04] p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-black text-white">{probe.season}</p>
-                    <Badge tone={accessTone(probe.access)}>{probe.access}</Badge>
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-white/58">{probe.message}</p>
-                  <p className="mt-2 text-xs text-white/50">fixtureId {probe.fixtureId ?? "없음"} · teamId {probe.teamId ?? "없음"}</p>
-                  <p className="mt-2 text-xs leading-5 text-emerald-50/75">응답 가능: {probe.usableEndpoints.join(", ") || "없음"}</p>
-                  <p className="mt-1 text-xs leading-5 text-amber-50/75">제한/빈 응답: {[...probe.blockedEndpoints, ...probe.emptyEndpoints].join(", ") || "없음"}</p>
-                </article>
-              ))}
+              <FallbackBox title="카드" body={fallbackStrategy.cardsFallback ?? "공식 경기 보고서 확인 필요 상태로 표시합니다."} />
+              <FallbackBox title="부상" body={fallbackStrategy.injuriesFallback ?? "공식 부상 데이터 미제공 상태로 표시합니다."} />
+              <FallbackBox title="징계" body={fallbackStrategy.disciplineFallback ?? "확정 징계를 단정하지 않고 확인 필요로 표시합니다."} />
             </div>
           </div>
         ) : null}
@@ -415,7 +395,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
           <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
             <h4 className="font-black text-white">API-Football 엔드포인트 결과</h4>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {apiDiagnosis.calls.map((call) => (
+              {(apiDiagnosis.calls ?? []).map((call) => (
                 <div key={`${call.endpoint}-${call.url}`} className="rounded border border-white/10 bg-white/[0.04] p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Badge tone={callTone(call)}>{callStatusLabel(call)}</Badge>
@@ -427,7 +407,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
                   <p className="mt-2 text-xs text-white/60">
                     response {call.responseCount}개 · normalized {call.normalizedCount}개 · {call.responseLength} bytes
                   </p>
-                  {call.error ? <p className="mt-2 text-xs leading-5 text-amber-50/80">{call.error}</p> : null}
+                  {call.error ? <p className="mt-2 text-xs leading-5 text-amber-50/80">{displayApiMessage(call.error)}</p> : null}
                   {call.replacementStrategy ? <p className="mt-2 text-xs leading-5 text-cyan-50/75">대체 처리: {call.replacementStrategy}</p> : null}
                 </div>
               ))}
@@ -436,7 +416,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
           <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
             <h4 className="font-black text-white">fixture id 매핑</h4>
             <div className="mt-3 space-y-2">
-              {apiDiagnosis.matchMappings.slice(0, 6).map((mapping) => (
+              {(apiDiagnosis.matchMappings ?? []).slice(0, 6).map((mapping) => (
                 <div key={`${mapping.internalMatchId}-${mapping.apiFootballFixtureId}-${mapping.reason}`} className="rounded border border-white/10 bg-white/[0.04] p-3">
                   <Badge tone={mapping.confidence === "매칭 실패" ? "danger" : "success"}>{mapping.confidence}</Badge>
                   <p className="mt-2 text-sm font-black text-white">
@@ -456,7 +436,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
           <h4 className="font-black text-white">football-data.org / static fallback 진단</h4>
           <div className="mt-3 grid gap-2 text-sm text-white/70">
             <InfoLine label="fallback 사용 횟수" value={`${footballDataFallbacks.length}개 리소스`} />
-            <InfoLine label="마지막 fallback 사유" value={footballDataFallbacks[0]?.message ?? failedApiCalls[0]?.error ?? "저장된 fallback 사유 없음"} />
+            <InfoLine label="마지막 fallback 사유" value={footballDataFallbacks[0]?.message ?? displayApiMessage(failedApiCalls[0]?.error) ?? "저장된 fallback 사유 없음"} />
             <InfoLine label="대체된 항목" value={footballDataFallbacks.map((item) => item.label).join(", ") || "없음"} />
           </div>
         </div>
@@ -470,9 +450,9 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
             <InfoLine label="마지막 실패" value={geminiStatus?.lastFailureMessage ?? geminiDiagnosis?.call?.error ?? "없음"} />
             <InfoLine label="결과 저장/반영" value={geminiStatus?.screenReflectionStatus ?? "진단 전"} />
           </div>
-          {geminiStatus?.logs.length ? (
+          {geminiStatus?.logs?.length ? (
             <div className="mt-3 grid gap-2">
-              {geminiStatus.logs.slice(0, 5).map((log) => (
+              {(geminiStatus.logs ?? []).slice(0, 5).map((log) => (
                 <div key={log.id} className="rounded border border-white/10 bg-white/[0.04] p-3 text-xs leading-5 text-white/70">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={log.status === "success" || log.status === "cache" ? "success" : log.status === "fallback" ? "warning" : "danger"}>
@@ -495,17 +475,17 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
         <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
           <h4 className="font-black text-white">데이터 반영 상태</h4>
           <div className="mt-3 grid gap-2 text-sm text-white/70">
-            <InfoLine label="API 원본 수집" value={apiDiagnosis?.dataReflection.rawCollection ?? "진단 전"} />
-            <InfoLine label="정규화" value={apiDiagnosis?.dataReflection.normalization ?? "진단 전"} />
-            <InfoLine label="저장" value={reflectionStatus ? "success" : apiDiagnosis?.dataReflection.storage ?? "진단 전"} />
-            <InfoLine label="화면 반영" value={reflectionStatus ? "success" : apiDiagnosis?.dataReflection.visibleData ?? "진단 전"} />
+            <InfoLine label="API 원본 수집" value={dataReflection?.rawCollection ?? "진단 전"} />
+            <InfoLine label="정규화" value={dataReflection?.normalization ?? "진단 전"} />
+            <InfoLine label="저장" value={reflectionStatus ? "success" : dataReflection?.storage ?? "진단 전"} />
+            <InfoLine label="화면 반영" value={reflectionStatus ? "success" : dataReflection?.visibleData ?? "진단 전"} />
             <InfoLine label="마지막 화면 반영" value={formatDate(reflectionStatus?.checkedAt ?? null)} />
           </div>
-          {apiDiagnosis ? (
+          {dataReflection ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge tone={toneFromDiagnostic(apiDiagnosis.dataReflection.rawCollection)}>{apiDiagnosis.dataReflection.rawCollection}</Badge>
-              <Badge tone={toneFromDiagnostic(apiDiagnosis.dataReflection.normalization)}>{apiDiagnosis.dataReflection.normalization}</Badge>
-              <Badge tone={toneFromDiagnostic(reflectionStatus ? "success" : apiDiagnosis.dataReflection.visibleData)}>{reflectionStatus ? "화면 저장 확인" : apiDiagnosis.dataReflection.visibleData}</Badge>
+              <Badge tone={toneFromDiagnostic(dataReflection.rawCollection)}>{dataReflection.rawCollection}</Badge>
+              <Badge tone={toneFromDiagnostic(dataReflection.normalization)}>{dataReflection.normalization}</Badge>
+              <Badge tone={toneFromDiagnostic(reflectionStatus ? "success" : dataReflection.visibleData)}>{reflectionStatus ? "화면 저장 확인" : dataReflection.visibleData}</Badge>
             </div>
           ) : null}
         </div>
@@ -521,9 +501,9 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
             </div>
           ))}
         </div>
-        {apiDiagnosis?.diagnosis.length ? (
+        {apiDiagnosis?.diagnosis?.length ? (
           <ul className="mt-4 grid gap-2 text-sm leading-6 text-emerald-50/75 md:grid-cols-2">
-            {apiDiagnosis.diagnosis.map((item) => (
+            {(apiDiagnosis.diagnosis ?? []).map((item) => (
               <li key={item} className="rounded border border-white/10 bg-white/[0.04] p-3">{item}</li>
             ))}
           </ul>

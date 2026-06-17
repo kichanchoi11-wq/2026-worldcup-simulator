@@ -22,25 +22,12 @@ export type ApiFootballDiagnosticCall = {
   finishedAt: string;
 };
 
-export type ApiFootballSeasonProbe = {
-  season: number;
-  access: "accessible" | "blocked" | "partial" | "unavailable" | "not-tested";
-  fixtureId: number | null;
-  teamId: number | null;
-  usableEndpoints: string[];
-  blockedEndpoints: string[];
-  emptyEndpoints: string[];
-  skippedEndpoints: string[];
-  calls: ApiFootballDiagnosticCall[];
-  message: string;
-};
-
 export type ApiFootballFallbackStrategy = {
   seasonAccessLimited: boolean;
   responseMessage: string | null;
   actual2026Source: "api-football" | "football-data.org fallback" | "static official bracket fallback";
-  apiFootballReferenceRange: string | null;
-  apiFootballReferencePurpose: string[];
+  worldCup2026Only: boolean;
+  apiFootballUsagePolicy: string;
   skippedDetailReason: string | null;
   cardsFallback: string;
   injuriesFallback: string;
@@ -89,7 +76,6 @@ export type ApiFootballDiagnosis = {
   targetLeague: string;
   targetSeason: string;
   calls: ApiFootballDiagnosticCall[];
-  seasonProbes: ApiFootballSeasonProbe[];
   fallbackStrategy: ApiFootballFallbackStrategy;
   matchMappings: MatchIdMapping[];
   dataReflection: {
