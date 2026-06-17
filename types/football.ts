@@ -152,6 +152,16 @@ export interface ApiFootballUsageSnapshot {
   warning: string | null;
 }
 
+export type ApiFootballSeasonAccessStatus = {
+  season: number;
+  league: number | string;
+  accessible: boolean;
+  reason: string;
+  detectedAt: string;
+  suggestedSeasons?: number[];
+  affectedEndpoints: string[];
+};
+
 export interface ApiFootballUsageLog {
   id: string;
   provider: FootballApiProvider;

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
-import { getFootballProviderStatus, normalizeMatches, normalizeStandings, normalizeTeams } from "@/lib/footballApi";
+import {
+  getApiFootballSeasonAccessStatus,
+  getFootballProviderStatus,
+  markApiFootballSeasonAccessLimited,
+  normalizeMatches,
+  normalizeStandings,
+  normalizeTeams
+} from "@/lib/footballApi";
 import { matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
 import type {
@@ -321,6 +328,29 @@ function skippedDetailCall(endpoint: string, path: string, reason: string, seaso
   };
 }
 
+function skippedSeasonLimitedCall(endpoint: string, path: string, reason: string, season?: number | null): ApiFootballDiagnosticCall {
+  const timestamp = nowIso();
+  return {
+    endpoint,
+    url: `${apiFootballBaseUrl}/${path}`,
+    ok: false,
+    skipped: true,
+    status: null,
+    responseLength: 0,
+    responseCount: 0,
+    normalizedCount: 0,
+    classification: "plan-limited",
+    season: season ?? null,
+    error: reason,
+    fallbackReason: reason,
+    replacementStrategy:
+      "API-Football 2026 시즌 접근 제한이 확인되어 이 endpoint는 반복 호출하지 않습니다. football-data.org, 캐시, 정적 공식 대진, Gemini 최신 정보 fallback으로 전환합니다.",
+    sample: [],
+    startedAt: timestamp,
+    finishedAt: timestamp
+  };
+}
+
 function numberFromSample(sample: unknown, key: string) {
   const value = sample && typeof sample === "object" ? (sample as Record<string, unknown>)[key] : null;
   return typeof value === "number" ? value : null;
@@ -380,7 +410,6 @@ export async function POST(request: Request) {
   const apiKey = process.env.API_FOOTBALL_KEY;
   const league = getLeague();
   const season = getSeason();
-  const providerStatus = getFootballProviderStatus();
   const calls: ApiFootballDiagnosticCall[] = [];
 
   const numericSeason = Number(season);
@@ -388,18 +417,45 @@ export async function POST(request: Request) {
   const connection = await callApiFootball("connection", "status", apiKey, null);
   calls.push(connection);
 
-  const fixtures = await callApiFootball("fixtures", `fixtures?league=${league}&season=${season}`, apiKey, seasonForCalls);
+  const knownSeasonAccessLimit = getApiFootballSeasonAccessStatus(league, season);
+  const seasonLimitReason =
+    knownSeasonAccessLimit && !knownSeasonAccessLimit.accessible
+      ? knownSeasonAccessLimit.reason
+      : "API-Football 2026 시즌 접근 제한이 확인되어 반복 호출을 중단했습니다.";
+  const fixtures =
+    knownSeasonAccessLimit && !knownSeasonAccessLimit.accessible
+      ? skippedSeasonLimitedCall("fixtures", `fixtures?league=${league}&season=${season}`, seasonLimitReason, seasonForCalls)
+      : await callApiFootball("fixtures", `fixtures?league=${league}&season=${season}`, apiKey, seasonForCalls);
   calls.push(fixtures);
 
-  const standings = await callApiFootball("standings", `standings?league=${league}&season=${season}`, apiKey, seasonForCalls);
+  if (fixtures.classification === "plan-limited" && fixtures.error) {
+    markApiFootballSeasonAccessLimited({ league, season, reason: fixtures.error, endpoint: fixtures.url });
+  }
+
+  const planLimitedAfterFixtures = fixtures.classification === "plan-limited" || Boolean(getApiFootballSeasonAccessStatus(league, season));
+  const repeatedCallSkipReason =
+    fixtures.error ??
+    getApiFootballSeasonAccessStatus(league, season)?.reason ??
+    "API-Football 2026 시즌 접근 제한이 확인되어 같은 시즌 endpoint를 반복 호출하지 않습니다.";
+  const standings = planLimitedAfterFixtures
+    ? skippedSeasonLimitedCall("standings", `standings?league=${league}&season=${season}`, repeatedCallSkipReason, seasonForCalls)
+    : await callApiFootball("standings", `standings?league=${league}&season=${season}`, apiKey, seasonForCalls);
   calls.push(standings);
 
-  const teams = await callApiFootball("teams", `teams?league=${league}&season=${season}`, apiKey, seasonForCalls);
+  const teams = planLimitedAfterFixtures
+    ? skippedSeasonLimitedCall("teams", `teams?league=${league}&season=${season}`, repeatedCallSkipReason, seasonForCalls)
+    : await callApiFootball("teams", `teams?league=${league}&season=${season}`, apiKey, seasonForCalls);
   calls.push(teams);
-  calls.push(await callApiFootball("players", `players?league=${league}&season=${season}&page=1`, apiKey, seasonForCalls));
+  calls.push(
+    planLimitedAfterFixtures
+      ? skippedSeasonLimitedCall("players", `players?league=${league}&season=${season}&page=1`, repeatedCallSkipReason, seasonForCalls)
+      : await callApiFootball("players", `players?league=${league}&season=${season}&page=1`, apiKey, seasonForCalls)
+  );
 
   const teamId = teamIdFromCall(teams);
-  if (teamId) {
+  if (planLimitedAfterFixtures) {
+    calls.push(skippedSeasonLimitedCall("coaches", "coachs?team={teamId}", repeatedCallSkipReason, seasonForCalls));
+  } else if (teamId) {
     calls.push(await callApiFootball("coaches", `coachs?team=${teamId}`, apiKey, seasonForCalls));
   } else {
     calls.push(skippedDetailCall("coaches", "coachs?team={teamId}", "API-Football 2026 teamId가 없어 coaches endpoint를 호출하지 않았습니다.", seasonForCalls));
@@ -407,17 +463,20 @@ export async function POST(request: Request) {
 
   const fixtureId = fixtureIdFromCall(fixtures);
 
-  if (fixtureId) {
+  if (planLimitedAfterFixtures) {
+    calls.push(skippedSeasonLimitedCall("events", "fixtures/events?fixture={fixtureId}", repeatedCallSkipReason, seasonForCalls));
+    calls.push(skippedSeasonLimitedCall("lineups", "fixtures/lineups?fixture={fixtureId}", repeatedCallSkipReason, seasonForCalls));
+    calls.push(skippedSeasonLimitedCall("injuries", `injuries?league=${league}&season=${season}`, repeatedCallSkipReason, seasonForCalls));
+    calls.push(skippedSeasonLimitedCall("statistics", "fixtures/statistics?fixture={fixtureId}", repeatedCallSkipReason, seasonForCalls));
+    calls.push(skippedSeasonLimitedCall("predictions", "predictions?fixture={fixtureId}", repeatedCallSkipReason, seasonForCalls));
+  } else if (fixtureId) {
     calls.push(await callApiFootball("events", `fixtures/events?fixture=${fixtureId}`, apiKey, seasonForCalls));
     calls.push(await callApiFootball("lineups", `fixtures/lineups?fixture=${fixtureId}`, apiKey, seasonForCalls));
     calls.push(await callApiFootball("injuries", `injuries?fixture=${fixtureId}`, apiKey, seasonForCalls));
     calls.push(await callApiFootball("statistics", `fixtures/statistics?fixture=${fixtureId}`, apiKey, seasonForCalls));
     calls.push(await callApiFootball("predictions", `predictions?fixture=${fixtureId}`, apiKey, seasonForCalls));
   } else {
-    const reason =
-      calls.some((call) => call.classification === "plan-limited")
-        ? "events 동기화 건너뜀: API-Football 2026 fixtureId가 없습니다. 원인: 무료 플랜에서 2026 fixtures 접근 불가. 대체: football-data.org 실제 결과 + 내부 카드/징계 안내 + Gemini 설명 사용."
-        : fixtures.error ?? "API-Football fixture id가 없어 detail endpoint를 호출할 수 없습니다.";
+    const reason = fixtures.error ?? "API-Football fixture id가 없어 detail endpoint를 호출할 수 없습니다.";
     calls.push(skippedDetailCall("events", "fixtures/events?fixture={fixtureId}", reason, seasonForCalls));
     calls.push(skippedDetailCall("lineups", "fixtures/lineups?fixture={fixtureId}", reason, seasonForCalls));
     calls.push(await callApiFootball("injuries", `injuries?league=${league}&season=${season}`, apiKey, seasonForCalls));
@@ -432,6 +491,7 @@ export async function POST(request: Request) {
     planLimitMessage: currentPlanLimitMessage,
     fixtureId
   });
+  const latestProviderStatus = getFootballProviderStatus();
   const matchMappings = buildMappings(fixtures);
   const apiSuccesses = calls.filter((call) => call.ok).length;
   const diagnosis = [
@@ -448,9 +508,9 @@ export async function POST(request: Request) {
       : "무료 플랜 제한 메시지는 이번 진단 응답에서 직접 감지되지 않았습니다.",
     fallbackStrategy.screenMessage,
     "과거 시즌 자동 탐색과 화면 반영은 비활성화했습니다. 관리자 화면과 저장소에는 2026 북중미 월드컵 데이터만 사용합니다.",
-    providerStatus.apiFootball.blocked
+    latestProviderStatus.apiFootball.blocked
       ? "오늘 API-Football soft limit에 도달해 추가 호출이 차단됩니다."
-      : `오늘 호출량은 ${providerStatus.apiFootball.used}/${providerStatus.apiFootball.limit}회입니다.`
+      : `오늘 호출량은 ${latestProviderStatus.apiFootball.used}/${latestProviderStatus.apiFootball.limit}회입니다.`
   ];
   const reflectedCount = calls.reduce((sum, call) => sum + call.normalizedCount, 0);
   const payload: ApiFootballDiagnosis = {
@@ -469,15 +529,16 @@ export async function POST(request: Request) {
       isVercel: Boolean(process.env.VERCEL)
     },
     usage: {
-      used: providerStatus.apiFootball.used,
-      limit: providerStatus.apiFootball.limit,
-      remaining: providerStatus.apiFootball.remaining,
-      blocked: providerStatus.apiFootball.blocked
+      used: latestProviderStatus.apiFootball.used,
+      limit: latestProviderStatus.apiFootball.limit,
+      remaining: latestProviderStatus.apiFootball.remaining,
+      blocked: latestProviderStatus.apiFootball.blocked
     },
     baseUrl: apiFootballBaseUrl,
     requestMode: "API-SPORTS direct",
     targetLeague: league,
     targetSeason: season,
+    seasonAccessStatus: latestProviderStatus.seasonAccessStatus,
     calls,
     fallbackStrategy,
     matchMappings,

@@ -3,11 +3,13 @@ import { matchDetails, createMatchPageData } from "@/data/matchDetails";
 import { fetchFootballData, getFootballProviderStatus, normalizeMatches, normalizeStandings, normalizeTeams } from "@/lib/footballApi";
 import { buildCardRecords } from "@/lib/cardRecordService";
 import { createGeminiAnalysis, getGeminiProviderStatus } from "@/lib/geminiAnalysisService";
+import { createMatchFreshInfo, createTeamFreshInfo, getGeminiFreshInfoStatus } from "@/lib/geminiFreshInfoService";
 import { createMatchReview } from "@/lib/matchReviewService";
 import { getAdvancedTeamDataAudit, getAllTeamAnalysisBundles, getBrokenPlayerNameAudit } from "@/lib/teamAnalysis";
 import type { ApiFootballResourceSnapshot, ApiFootballTrackedResource, FootballApiEnvelope } from "@/types/football";
 import type { CardRecord } from "@/types/card";
 import type { GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
+import type { GeminiFreshInfoResult, GeminiFreshInfoStatus } from "@/types/freshInfo";
 import type { CoachData, FormationData, KoreaVsTeamPrediction, PlayerData, PlayerStatus } from "@/types/team";
 
 export type RefreshStatus = "success" | "partial" | "failed" | "skipped";
@@ -43,6 +45,8 @@ export type FootballDataRefreshSnapshot = {
     teamAnalysisBundles: ReturnType<typeof getAllTeamAnalysisBundles>;
     matchReviews: NonNullable<ReturnType<typeof createMatchReview>>[];
     cardRecords: CardRecord[];
+    freshInfoResults: GeminiFreshInfoResult[];
+    freshInfoStatus: GeminiFreshInfoStatus;
     geminiAnalyses: GeminiAnalysisRecord[];
     geminiStatus: GeminiProviderStatus;
     brokenPlayerNames: ReturnType<typeof getBrokenPlayerNameAudit>;
@@ -230,6 +234,31 @@ async function createRefreshGeminiAnalyses(input: {
   return Promise.all(analyses);
 }
 
+function freshInfoTargetLimit(mode: "manual" | "cron") {
+  const fallback = mode === "manual" ? 4 : 2;
+  const value = Number(process.env.GEMINI_FRESH_INFO_MATCH_LIMIT);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+async function createRefreshFreshInfo(input: {
+  mode: "manual" | "cron";
+  matches: ReturnType<typeof normalizeMatches>;
+}): Promise<GeminiFreshInfoResult[]> {
+  const targetLimit = freshInfoTargetLimit(input.mode);
+  const targetMatches = matchDetails
+    .filter((match) => match.status === "종료" || match.score.home !== null || match.score.away !== null)
+    .slice(0, targetLimit);
+  const fallbackUpcomingMatches = targetMatches.length > 0 ? [] : matchDetails.slice(0, Math.max(1, Math.min(targetLimit, 2)));
+  const matchTargets = targetMatches.length > 0 ? targetMatches : fallbackUpcomingMatches;
+  const teamTargets = input.mode === "manual" ? ["korea-republic"] : [];
+  const results = await Promise.all([
+    ...matchTargets.map((match) => createMatchFreshInfo(String(match.matchId), input.matches)),
+    ...teamTargets.map((teamId) => createTeamFreshInfo(teamId))
+  ]);
+
+  return results.filter((result): result is GeminiFreshInfoResult => Boolean(result));
+}
+
 export async function refreshFootballData(mode: "manual" | "cron" = "manual"): Promise<FootballDataRefreshSnapshot> {
   const refreshedAt = new Date().toISOString();
   const [matchesEnvelope, standingsEnvelope, teamsEnvelope] = await Promise.all([
@@ -275,6 +304,8 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
   ];
   const cardRecords = buildCardRecords({ apiEvents: fallbackResources.events, matches, refreshedAt });
   const providerStatus = getFootballProviderStatus();
+  const freshInfoResults = await createRefreshFreshInfo({ mode, matches });
+  const freshInfoStatus = getGeminiFreshInfoStatus(freshInfoResults);
   const geminiAnalyses = await createRefreshGeminiAnalyses({
     mode,
     refreshedAt,
@@ -350,6 +381,13 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
       geminiAnalyses.length
     ),
     item(
+      "gemini-fresh-info",
+      "Gemini 최신 정보 검색",
+      freshInfoResults.some((result) => result.searchUsed) ? "success" : freshInfoResults.length > 0 ? "partial" : "skipped",
+      freshInfoStatus.message,
+      freshInfoResults.length
+    ),
+    item(
       "match-reviews",
       "경기 리뷰",
       matchReviews.length > 0 ? "success" : "skipped",
@@ -384,6 +422,8 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
       teamAnalysisBundles,
       matchReviews,
       cardRecords,
+      freshInfoResults,
+      freshInfoStatus,
       geminiAnalyses,
       geminiStatus,
       brokenPlayerNames,

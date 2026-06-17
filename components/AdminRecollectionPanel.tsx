@@ -81,6 +81,8 @@ function compactRefreshSnapshot(data: RecollectionDataPayload): RecollectionData
       teamAnalysisBundles: [],
       matchReviews: data.matchReviews,
       cardRecords: data.cardRecords,
+      freshInfoResults: data.freshInfoResults,
+      freshInfoStatus: data.freshInfoStatus,
       geminiAnalyses: data.geminiAnalyses,
       geminiStatus: data.geminiStatus,
       providerStatus: data.providerStatus
@@ -113,6 +115,8 @@ function persistRecollectionPayload(data: RecollectionDataPayload) {
   writeIfAny(storageKeys.teamRiskProfilesData, data.teamRiskProfiles);
   writeIfAny(storageKeys.koreaVsTeamPredictionsData, data.koreaPredictions);
   writeIfAny(storageKeys.matchReviewsData, data.matchReviews);
+  writeIfAny(storageKeys.geminiFreshInfoData, data.freshInfoResults);
+  safeWriteStorage(storageKeys.geminiFreshInfoStatusData, data.freshInfoStatus);
   writeIfAny(storageKeys.geminiAnalysesData, data.geminiAnalyses);
   safeWriteStorage(storageKeys.geminiStatusData, data.geminiStatus);
 }

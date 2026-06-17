@@ -3,6 +3,7 @@ import type { ApiFootballResourceSnapshot, ApiFootballTeamRecord, FootballMatch,
 import type { MatchReview } from "@/types/match";
 import type { CardRecord } from "@/types/card";
 import type { GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
+import type { GeminiFreshInfoResult, GeminiFreshInfoStatus } from "@/types/freshInfo";
 import type { CoachTacticalProfile, KoreaVsTeamPrediction, PlayerData, PlayerStatus, TeamFormationProfile, TeamRiskProfile } from "@/types/team";
 
 export type RecollectionScope =
@@ -80,6 +81,8 @@ export type RecollectionDataPayload = {
   apiStatistics: unknown[];
   apiPredictions: unknown[];
   cardRecords: CardRecord[];
+  freshInfoResults: GeminiFreshInfoResult[];
+  freshInfoStatus: GeminiFreshInfoStatus;
   geminiAnalyses: GeminiAnalysisRecord[];
   geminiStatus: GeminiProviderStatus;
   teamTactics: CoachTacticalProfile[];

@@ -1,4 +1,5 @@
 import type {
+  ApiFootballSeasonAccessStatus,
   ApiFootballSyncLog,
   ApiFootballTeamRecord,
   ApiFootballUsageLog,
@@ -14,6 +15,7 @@ const apiFootballBaseUrl = "https://v3.football.api-sports.io";
 const footballDataBaseUrl = "https://api.football-data.org/v4";
 const defaultApiFootballDailyLimit = 100;
 const defaultApiFootballSoftLimit = 95;
+const planLimitPattern = /Free plans do not have access to this season|try from 2022 to 2024/i;
 
 type FootballResource =
   | "competitions"
@@ -48,6 +50,7 @@ type CachedProviderData = {
 
 type ApiState = {
   cache: Map<string, CachedProviderData>;
+  seasonAccess: Map<string, ApiFootballSeasonAccessStatus>;
   usage: {
     dateKey: string;
     used: number;
@@ -120,6 +123,7 @@ function getState(): ApiState {
   if (!globalThis.__worldCupFootballApiState) {
     globalThis.__worldCupFootballApiState = {
       cache: new Map(),
+      seasonAccess: new Map(),
       usage: {
         dateKey,
         used: 0,
@@ -139,6 +143,52 @@ function getState(): ApiState {
   }
 
   return globalThis.__worldCupFootballApiState;
+}
+
+function seasonAccessKey(league = getApiFootballLeagueId(), season = getApiFootballSeason()) {
+  return `${league}:${season}`;
+}
+
+function parseSuggestedSeasons(message: string | null) {
+  void message;
+  return undefined;
+}
+
+function isApiFootball2026SeasonAccessLimited(message: string | null | undefined) {
+  return Boolean(message && planLimitPattern.test(message));
+}
+
+export function markApiFootballSeasonAccessLimited(input: {
+  league?: string | number;
+  season?: string | number;
+  reason: string;
+  endpoint: string;
+}) {
+  const league = input.league ?? getApiFootballLeagueId();
+  const season = input.season ?? getApiFootballSeason();
+  const seasonNumber = Number(season);
+  const key = seasonAccessKey(String(league), String(season));
+  const existing = getState().seasonAccess.get(key);
+  const affectedEndpoints = Array.from(new Set([...(existing?.affectedEndpoints ?? []), input.endpoint]));
+
+  getState().seasonAccess.set(key, {
+    season: Number.isFinite(seasonNumber) ? seasonNumber : 2026,
+    league,
+    accessible: false,
+    reason: input.reason,
+    detectedAt: existing?.detectedAt ?? nowIso(),
+    suggestedSeasons: parseSuggestedSeasons(input.reason),
+    affectedEndpoints
+  });
+}
+
+export function getApiFootballSeasonAccessStatus(league = getApiFootballLeagueId(), season = getApiFootballSeason()) {
+  return getState().seasonAccess.get(seasonAccessKey(league, season)) ?? null;
+}
+
+function shouldSkipApiFootball(config: EndpointConfig) {
+  const status = getApiFootballSeasonAccessStatus();
+  return Boolean(status && !status.accessible && config.apiFootballPath.includes(`season=${status.season}`));
 }
 
 function cacheKey(provider: FootballApiProvider, endpoint: string) {
@@ -216,6 +266,7 @@ export function getFootballProviderStatus() {
   return {
     providerOrder: ["api-football", "football-data.org", "cache", "static"] as const,
     apiFootball: usageSnapshot(),
+    seasonAccessStatus: getApiFootballSeasonAccessStatus(),
     cacheEntries: Array.from(state.cache.values()).map((entry) => ({
       provider: entry.provider,
       resource: entry.resource,
@@ -400,6 +451,35 @@ async function fetchApiFootball(config: EndpointConfig): Promise<ProviderResult>
 
   const apiKey = getApiFootballKey();
   const usage = usageSnapshot();
+  const seasonAccess = getApiFootballSeasonAccessStatus();
+
+  if (shouldSkipApiFootball(config)) {
+    const message =
+      seasonAccess?.reason ??
+      "API-Football 2026 시즌 접근 제한이 이미 감지되어 같은 시즌 endpoint 반복 호출을 중단했습니다.";
+    rememberUsage({
+      id: crypto.randomUUID(),
+      provider: "api-football",
+      endpoint: config.apiFootballPath,
+      resource: config.resource,
+      counted: false,
+      status: "blocked",
+      httpStatus: null,
+      message: `${message} football-data.org/캐시/정적 fallback으로 전환합니다.`,
+      createdAt: nowIso()
+    });
+
+    return {
+      ok: false,
+      provider: "api-football",
+      data: null,
+      rawData: null,
+      message: "API-Football 2026 접근 제한 감지 상태라 반복 호출하지 않고 fallback 데이터를 확인합니다.",
+      dataQuality: "unavailable",
+      cacheExpiresAt: null,
+      isFallbackData: false
+    };
+  }
 
   if (!apiKey) {
     rememberUsage({
@@ -469,6 +549,13 @@ async function fetchApiFootball(config: EndpointConfig): Promise<ProviderResult>
         (response.ok
           ? `API-Football ${config.label} 응답이 비어 있어 fallback 데이터를 확인합니다.`
           : `API-Football ${config.label} 요청이 HTTP ${response.status}로 실패했습니다.`);
+
+      if (isApiFootball2026SeasonAccessLimited(message)) {
+        markApiFootballSeasonAccessLimited({
+          reason: message,
+          endpoint: config.apiFootballPath
+        });
+      }
 
       rememberUsage({
         id: crypto.randomUUID(),

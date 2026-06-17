@@ -1,4 +1,5 @@
 import type { GeminiProviderStatus } from "@/types/gemini";
+import type { ApiFootballSeasonAccessStatus } from "@/types/football";
 
 export type DiagnosticStatus = "success" | "partial" | "failed" | "skipped";
 export type ApiFootballEndpointStatus = DiagnosticStatus | "empty" | "plan-limited" | "mapping-failed";
@@ -75,6 +76,7 @@ export type ApiFootballDiagnosis = {
   requestMode: "API-SPORTS direct";
   targetLeague: string;
   targetSeason: string;
+  seasonAccessStatus?: ApiFootballSeasonAccessStatus | null;
   calls: ApiFootballDiagnosticCall[];
   fallbackStrategy: ApiFootballFallbackStrategy;
   matchMappings: MatchIdMapping[];

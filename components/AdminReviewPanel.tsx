@@ -6,6 +6,7 @@ import AdminRecollectionPanel from "@/components/AdminRecollectionPanel";
 import Badge from "@/components/Badge";
 import DataPipelineDiagnosticsPanel from "@/components/DataPipelineDiagnosticsPanel";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
+import GeminiFreshInfoStatusPanel from "@/components/GeminiFreshInfoStatusPanel";
 import { createMatchPageData, matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
 import { createMatchReview, isFinishedMatch } from "@/lib/matchReviewService";
@@ -396,6 +397,7 @@ export default function AdminReviewPanel() {
         </div>
         <div className="mt-4 space-y-4">
           <DataPipelineDiagnosticsPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
+          <GeminiFreshInfoStatusPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
           <AdminRecollectionPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
         </div>
       </section>

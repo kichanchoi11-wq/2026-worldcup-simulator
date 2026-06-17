@@ -548,6 +548,8 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
   });
   const geminiAnalyses = [...refreshSnapshot.data.geminiAnalyses, ...adminGeminiAnalyses];
   const geminiStatus = getGeminiProviderStatus();
+  const freshInfoResults = refreshSnapshot.data.freshInfoResults;
+  const freshInfoStatus = refreshSnapshot.data.freshInfoStatus;
   const geminiAnalysisResult: RecollectionResourceResult = {
     id: `gemini-analysis-${scope}`,
     label: "Gemini 분석 실행",
@@ -574,6 +576,7 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
     apiStatistics.length +
     apiPredictions.length +
     cardRecords.length +
+    freshInfoResults.length +
     geminiAnalyses.length +
     teamAnalysisBundles.length * 4 +
     matchReviews.length;
@@ -611,6 +614,8 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
         resourceSnapshots,
         matchReviews,
         cardRecords,
+        freshInfoResults,
+        freshInfoStatus,
         geminiAnalyses,
         geminiStatus,
         providerStatus: getFootballProviderStatus()
@@ -636,6 +641,8 @@ export async function runAdminRecollection(scope: RecollectionScope): Promise<Re
     apiStatistics,
     apiPredictions,
     cardRecords,
+    freshInfoResults,
+    freshInfoStatus,
     geminiAnalyses,
     geminiStatus,
     teamTactics: teamAnalysisBundles.map((item) => item.coachTacticalProfile),
