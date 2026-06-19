@@ -76,6 +76,13 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         targetId={match.matchId}
         targetName={`${match.homeTeamName ?? "홈팀"} vs ${match.awayTeamName ?? "원정팀"}`}
         relatedTeamNames={[match.homeTeamName, match.awayTeamName]}
+        homeTeamName={match.homeTeamName}
+        awayTeamName={match.awayTeamName}
+        homeScore={match.score.home}
+        awayScore={match.score.away}
+        matchStatus={match.status}
+        matchDateTime={match.dateTime}
+        venue={match.stadium}
       />
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">

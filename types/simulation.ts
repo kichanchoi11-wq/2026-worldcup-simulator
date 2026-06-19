@@ -46,6 +46,8 @@ export interface UserSimulationData {
 export interface ScenarioCalculatorData {
   groupRankings: Record<string, BracketTeam[]>;
   thirdPlaceQualifiers: BracketTeam[];
+  matchInputs?: ScenarioMatchInput[];
+  scenarioStandings?: Record<string, ScenarioStandingRow[]>;
   roundOf32: BracketMatch[];
   roundOf16: BracketMatch[];
   quarterFinals: BracketMatch[];
@@ -54,6 +56,49 @@ export interface ScenarioCalculatorData {
   final: BracketMatch | null;
   champion: BracketTeam | null;
   source: "경우의 수 계산기";
+}
+
+export type ScenarioMatchInputSource =
+  | "api"
+  | "football-data.org"
+  | "search"
+  | "manual"
+  | "user"
+  | "static";
+
+export type ScenarioMatchInputStatus = "actual" | "user" | "pending";
+
+export interface ScenarioMatchInput {
+  matchId: string;
+  groupId: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  selectedResult: "home" | "draw" | "away" | null;
+  locked: boolean;
+  status: ScenarioMatchInputStatus;
+  source: ScenarioMatchInputSource;
+  sourceLabel: string;
+  updatedAt: string | null;
+}
+
+export interface ScenarioStandingRow {
+  groupId: string;
+  teamId: string;
+  teamName: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  rank: number;
+  source: "actual" | "simulation";
 }
 
 export interface TournamentDataSourceOption {

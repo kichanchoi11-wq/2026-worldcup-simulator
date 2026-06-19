@@ -1,4 +1,5 @@
 import GroupSimulationPanel from "@/components/GroupSimulationPanel";
+import GroupStandingsOverview from "@/components/GroupStandingsOverview";
 import GroupTable from "@/components/GroupTable";
 import LiveDataPanel from "@/components/LiveDataPanel";
 import { getBaseGroups } from "@/lib/scenario";
@@ -15,6 +16,7 @@ export default function GroupsPage() {
           공개 조 편성 자료로 확인한 국가명은 표시하고, 실제 경기 결과·순위는 API 또는 공식 출처 확인 후 별도 데이터로 반영합니다.
         </p>
       </section>
+      <GroupStandingsOverview groups={groups} />
       <GroupTable groups={groups} />
       <GroupSimulationPanel groups={groups} />
       <LiveDataPanel />
