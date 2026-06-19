@@ -111,3 +111,124 @@ export type AIFreshInfoStatus = {
   fallbackCount: number;
   message: string;
 };
+
+export type SourcedFootballInfoCategory =
+  | "match_result"
+  | "match_status"
+  | "venue"
+  | "card"
+  | "injury"
+  | "suspension"
+  | "fitness"
+  | "lineup"
+  | "formation"
+  | "tactics"
+  | "match_review";
+
+export type SourcedFootballInfoStatus =
+  | "confirmed"
+  | "multiple_sources"
+  | "single_source"
+  | "ai_inferred"
+  | "needs_verification";
+
+export type SourcedFootballInfoConfidence = "high" | "medium" | "low" | "needs_check";
+
+export type SourcedFootballInfoProvider =
+  | "Tavily"
+  | "Exa"
+  | "football-data.org"
+  | "API-Football"
+  | "manual"
+  | "AI"
+  | "static";
+
+export type SourcedFootballInfo = {
+  id: string;
+  targetType: "match" | "team" | "player" | "coach";
+  targetId: string;
+  targetName: string;
+  category: SourcedFootballInfoCategory;
+  title: string;
+  summary: string;
+  value?: string | null;
+  playerName?: string | null;
+  teamName?: string | null;
+  matchId?: string | number | null;
+  status: SourcedFootballInfoStatus;
+  confidence: SourcedFootballInfoConfidence;
+  sources: {
+    title: string;
+    url?: string;
+    provider: SourcedFootballInfoProvider;
+    publishedAt?: string | null;
+    checkedAt: string;
+  }[];
+  generatedBy: "search" | "ai_summary" | "internal_rule" | "manual";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RefreshSnapshotMeta = {
+  snapshotId: string;
+  createdAt: string;
+  updatedAt: string;
+  targetSummary: {
+    matches: number;
+    teams: number;
+    players: number;
+  };
+  counts: {
+    sourcedItems: number;
+    cards: number;
+    injuries: number;
+    suspensions: number;
+    lineups: number;
+    formations: number;
+    reviews: number;
+    fitness: number;
+  };
+  sourceProviders: string[];
+  status: "success" | "partial" | "failed";
+  storageMode: "server-cache" | "compressed" | "indexeddb" | "localStorage-meta-only";
+};
+
+export type FreshInfoTargetMapping = {
+  infoId: string;
+  targetType: "match" | "team" | "player";
+  resolvedTargetId: string | number | null;
+  confidence: "exact" | "name_match" | "date_team_match" | "manual_needed" | "failed";
+  reason?: string | null;
+};
+
+export type FreshInfoReflectionDiagnostics = {
+  checkedAt: string;
+  collectedResults: number;
+  normalizedItems: number;
+  sourceBackedItems: number;
+  aiInferredItems: number;
+  targetMappingSuccess: number;
+  matchDetailReflected: number;
+  teamDetailReflected: number;
+  unmatchedItems: number;
+  counts: {
+    cards: number;
+    injuries: number;
+    suspensions: number;
+    fitness: number;
+    lineups: number;
+    formations: number;
+    reviews: number;
+  };
+  storage: {
+    mode: RefreshSnapshotMeta["storageMode"];
+    originalSnapshotBytes: number;
+    metaBytes: number;
+    normalizedBytes: number;
+    localStorageOk: boolean;
+    message: string;
+  };
+  mappings: FreshInfoTargetMapping[];
+  unmatchedReasons: string[];
+  message: string;
+};

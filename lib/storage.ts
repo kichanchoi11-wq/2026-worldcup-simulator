@@ -24,6 +24,10 @@ export const storageKeys = {
   aiStatusData: "worldCupAIStatus",
   aiFreshInfoData: "worldCupAIFreshInfo",
   aiFreshInfoStatusData: "worldCupAIFreshInfoStatus",
+  sourcedFootballInfoData: "worldCupSourcedFootballInfo",
+  freshInfoTargetMappingsData: "worldCupFreshInfoTargetMappings",
+  freshInfoReflectionDiagnosticsData: "worldCupFreshInfoReflectionDiagnostics",
+  footballRefreshSnapshotMetaData: "worldCupFootballRefreshSnapshotMeta",
   teamTacticsData: "worldCupTeamTactics",
   teamFormationsData: "worldCupTeamFormations",
   teamRiskProfilesData: "worldCupTeamRiskProfiles",
@@ -73,6 +77,57 @@ export function writeStorage<T>(key: StorageKey, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+export type SafeStorageWriteResult = {
+  ok: boolean;
+  bytes: number;
+  reason?: "server" | "localStorage_payload_too_large" | "storage_error";
+  message?: string;
+};
+
+export function getStorageByteSize(value: unknown) {
+  const payload = JSON.stringify(value);
+
+  if (typeof Blob !== "undefined") {
+    return new Blob([payload]).size;
+  }
+
+  return payload.length;
+}
+
+export function writeStorageSafely<T>(key: StorageKey, value: T, maxBytes = 200_000): SafeStorageWriteResult {
+  if (typeof window === "undefined") {
+    return {
+      ok: false,
+      bytes: 0,
+      reason: "server",
+      message: "브라우저 환경이 아니어서 localStorage에 저장하지 않았습니다."
+    };
+  }
+
+  const bytes = getStorageByteSize(value);
+
+  if (bytes > maxBytes) {
+    return {
+      ok: false,
+      bytes,
+      reason: "localStorage_payload_too_large",
+      message: "검색 결과 원본이 커서 localStorage에 직접 저장하지 않고 요약/정규화 데이터만 저장했습니다."
+    };
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return { ok: true, bytes };
+  } catch (error) {
+    return {
+      ok: false,
+      bytes,
+      reason: "storage_error",
+      message: error instanceof Error ? error.message : "localStorage 저장 중 오류가 발생했습니다."
+    };
+  }
+}
+
 export function removeStorageItem(key: StorageKey) {
   if (typeof window === "undefined") {
     return;
@@ -86,7 +141,7 @@ type MigrationResult = {
   touchedKeys: string[];
 };
 
-const currentMigrationVersion = "2026-06-team-match-detail-sanitizer";
+const currentMigrationVersion = "2026-06-latest-info-meta-storage";
 const temporarySlotKeyword = "\uc2ac\ub86f";
 const sourceRequiredKeys = new Set([
   "coachName",
@@ -128,6 +183,10 @@ const migratableStorageKeys: StorageKey[] = [
   storageKeys.aiStatusData,
   storageKeys.aiFreshInfoData,
   storageKeys.aiFreshInfoStatusData,
+  storageKeys.sourcedFootballInfoData,
+  storageKeys.freshInfoTargetMappingsData,
+  storageKeys.freshInfoReflectionDiagnosticsData,
+  storageKeys.footballRefreshSnapshotMetaData,
   storageKeys.teamTacticsData,
   storageKeys.teamFormationsData,
   storageKeys.teamRiskProfilesData,
@@ -214,6 +273,54 @@ function sanitizeTemporarySlotData(value: unknown): { value: unknown; changed: b
   return { value: next, changed };
 }
 
+function compactStoredRefreshSnapshot(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const source = value as Record<string, unknown>;
+  const data = source.data && typeof source.data === "object" ? (source.data as Record<string, unknown>) : null;
+  const refreshedAt = typeof source.refreshedAt === "string" ? source.refreshedAt : null;
+
+  if (!data || !refreshedAt) {
+    return null;
+  }
+
+  const freshInfoStatus =
+    data.freshInfoStatus && typeof data.freshInfoStatus === "object"
+      ? (data.freshInfoStatus as { reflectedCounts?: Partial<Record<string, number>>; sourceBackedItemCount?: number; targetMatchCount?: number; targetTeamCount?: number })
+      : null;
+  const freshInfoResults = Array.isArray(data.freshInfoResults) ? data.freshInfoResults : [];
+  const reflected = freshInfoStatus?.reflectedCounts ?? {};
+
+  return {
+    snapshotId: `${typeof source.mode === "string" ? source.mode : "manual"}-${refreshedAt}`,
+    createdAt: refreshedAt,
+    updatedAt: refreshedAt,
+    targetSummary: {
+      matches: Array.isArray(data.matches) ? data.matches.length : freshInfoStatus?.targetMatchCount ?? 0,
+      teams: Array.isArray(data.teams) ? data.teams.length : freshInfoStatus?.targetTeamCount ?? 0,
+      players:
+        data.fallbackResources && typeof data.fallbackResources === "object" && Array.isArray((data.fallbackResources as Record<string, unknown>).players)
+          ? ((data.fallbackResources as Record<string, unknown>).players as unknown[]).length
+          : 0
+    },
+    counts: {
+      sourcedItems: freshInfoStatus?.sourceBackedItemCount ?? freshInfoResults.length,
+      cards: reflected.cards ?? 0,
+      injuries: reflected.injuries ?? 0,
+      suspensions: reflected.suspensions ?? 0,
+      lineups: reflected.lineupsAndFormations ?? 0,
+      formations: reflected.lineupsAndFormations ?? 0,
+      reviews: reflected.reviews ?? 0,
+      fitness: reflected.fitness ?? 0
+    },
+    sourceProviders: [],
+    status: source.ok === false ? "failed" : "partial",
+    storageMode: "localStorage-meta-only"
+  };
+}
+
 export function migrateStoredFootballData(): MigrationResult {
   if (typeof window === "undefined") {
     return { migrated: false, touchedKeys: [] };
@@ -234,6 +341,15 @@ export function migrateStoredFootballData(): MigrationResult {
 
     try {
       const parsed = JSON.parse(raw) as unknown;
+      if (key === storageKeys.footballRefreshSnapshotData) {
+        const compactSnapshot = compactStoredRefreshSnapshot(parsed);
+        if (compactSnapshot) {
+          window.localStorage.setItem(storageKeys.footballRefreshSnapshotData, JSON.stringify(compactSnapshot));
+          window.localStorage.setItem(storageKeys.footballRefreshSnapshotMetaData, JSON.stringify(compactSnapshot));
+          touchedKeys.push(key);
+          continue;
+        }
+      }
       const sanitized = sanitizeTemporarySlotData(parsed);
       if (sanitized.changed) {
         window.localStorage.setItem(key, JSON.stringify(sanitized.value));

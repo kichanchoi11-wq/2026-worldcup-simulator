@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Badge from "@/components/Badge";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
+import { persistFreshInfoSnapshotMeta } from "@/lib/freshInfoStorage";
 import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/storage";
 import type { AIProviderStatus } from "@/types/ai";
 import type { AIAnalysisLog } from "@/types/ai";
@@ -121,7 +122,7 @@ function compactRefreshSnapshot(data: RecollectionDataPayload): RecollectionData
 function persistRecollectionPayload(data: RecollectionDataPayload) {
   const compactSnapshots = compactResourceSnapshots(data);
 
-  safeWriteStorage(storageKeys.footballRefreshSnapshotData, compactRefreshSnapshot(data));
+  persistFreshInfoSnapshotMeta(compactRefreshSnapshot(data));
   safeWriteStorage(storageKeys.lastManualRefreshData, new Date().toISOString());
   writeIfAny(storageKeys.apiMatchesData, data.matches);
   writeIfAny(storageKeys.apiStandingsData, data.standings);

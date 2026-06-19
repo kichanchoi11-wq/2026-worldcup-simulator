@@ -8,6 +8,7 @@ import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballResourceSnapshot, FootballMatch, StandingRow } from "@/types/football";
 import type { ApiFootballDiagnosis, ApiFootballDiagnosticCall, DiagnosticStatus, AIDiagnosis } from "@/types/diagnostics";
 import type { AIAnalysisLog, AIAnalysisRecord, AIProviderStatus } from "@/types/ai";
+import type { FreshInfoReflectionDiagnostics, SourcedFootballInfo } from "@/types/freshInfo";
 import type { RecollectionJob } from "@/types/recollection";
 
 type ReflectionStatus = {
@@ -132,6 +133,8 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
   const [providerStatus, setProviderStatus] = useState<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(null);
   const [aiStatus, setAIStatus] = useState<AIProviderStatus | null>(null);
   const [reflectionStatus, setReflectionStatus] = useState<ReflectionStatus | null>(null);
+  const [freshDiagnostics, setFreshDiagnostics] = useState<FreshInfoReflectionDiagnostics | null>(null);
+  const [sourcedFreshInfoCount, setSourcedFreshInfoCount] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
 
@@ -142,6 +145,8 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
     setProviderStatus(readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null));
     setAIStatus(readStorage<AIProviderStatus | null>(storageKeys.aiStatusData, null));
     setReflectionStatus(readStorage<ReflectionStatus | null>(storageKeys.dataReflectionStatusData, null));
+    setFreshDiagnostics(readStorage<FreshInfoReflectionDiagnostics | null>(storageKeys.freshInfoReflectionDiagnosticsData, null));
+    setSourcedFreshInfoCount(readArrayStorage<SourcedFootballInfo>(storageKeys.sourcedFootballInfoData).length);
   }
 
   useEffect(() => {
@@ -264,6 +269,8 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
     const storedResources = readArrayStorage<ApiFootballResourceSnapshot>(storageKeys.apiFootballResourceSnapshotsData);
     const aiAnalyses = readArrayStorage<AIAnalysisRecord>(storageKeys.aiAnalysesData);
     const jobs = readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData);
+    const sourcedFreshInfo = readArrayStorage<SourcedFootballInfo>(storageKeys.sourcedFootballInfoData);
+    const storedFreshDiagnostics = readStorage<FreshInfoReflectionDiagnostics | null>(storageKeys.freshInfoReflectionDiagnosticsData, null);
     const cleaned = jobs.filter(staleRunningJob).length;
     const nextStatus: ReflectionStatus = {
       checkedAt: new Date().toISOString(),
@@ -281,6 +288,8 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
     writeStorage(storageKeys.dataReflectionStatusData, nextStatus);
     setReflectionStatus(nextStatus);
     setResources(storedResources);
+    setFreshDiagnostics(storedFreshDiagnostics);
+    setSourcedFreshInfoCount(sourcedFreshInfo.length);
     setMessage(nextStatus.message);
     onSnapshotChange?.();
   }
@@ -518,6 +527,37 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-4 rounded border border-cyan-300/25 bg-cyan-400/10 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={freshDiagnostics ? "success" : "warning"}>최신 정보 반영 진단</Badge>
+          <Badge tone="neutral">{sourcedFreshInfoCount}건 저장</Badge>
+          <Badge tone={freshDiagnostics?.storage.localStorageOk ? "success" : "warning"}>
+            {freshDiagnostics?.storage.mode ?? "진단 전"}
+          </Badge>
+        </div>
+        <div className="mt-3 grid gap-2 text-sm text-cyan-50/78 md:grid-cols-2 xl:grid-cols-4">
+          <InfoLine label="검색 결과 수집" value={`${freshDiagnostics?.collectedResults ?? 0}건`} />
+          <InfoLine label="정규화 성공" value={`${freshDiagnostics?.normalizedItems ?? 0}건`} />
+          <InfoLine label="target 매핑 성공" value={`${freshDiagnostics?.targetMappingSuccess ?? 0}건`} />
+          <InfoLine label="미반영" value={`${freshDiagnostics?.unmatchedItems ?? 0}건`} />
+          <InfoLine label="경기 상세 반영" value={`${freshDiagnostics?.matchDetailReflected ?? 0}건`} />
+          <InfoLine label="팀 상세 반영" value={`${freshDiagnostics?.teamDetailReflected ?? 0}건`} />
+          <InfoLine label="카드/부상/징계" value={`${freshDiagnostics?.counts.cards ?? 0}/${freshDiagnostics?.counts.injuries ?? 0}/${freshDiagnostics?.counts.suspensions ?? 0}건`} />
+          <InfoLine label="체력/라인업/포메이션" value={`${freshDiagnostics?.counts.fitness ?? 0}/${freshDiagnostics?.counts.lineups ?? 0}/${freshDiagnostics?.counts.formations ?? 0}건`} />
+          <InfoLine label="원본 snapshot" value={formatBytes(freshDiagnostics?.storage.originalSnapshotBytes)} />
+          <InfoLine label="메타 저장 크기" value={formatBytes(freshDiagnostics?.storage.metaBytes)} />
+          <InfoLine label="정규화 저장 크기" value={formatBytes(freshDiagnostics?.storage.normalizedBytes)} />
+          <InfoLine label="저장 상태" value={freshDiagnostics?.storage.message ?? "진단 전"} />
+        </div>
+        {freshDiagnostics?.unmatchedReasons.length ? (
+          <ul className="mt-3 grid gap-2 text-sm leading-6 text-cyan-50/75 md:grid-cols-2">
+            {freshDiagnostics.unmatchedReasons.slice(0, 4).map((reason) => (
+              <li key={reason} className="rounded border border-white/10 bg-white/[0.04] p-3">{reason}</li>
+            ))}
+          </ul>
+        ) : null}
       </div>
 
       <div className="mt-4 rounded border border-white/10 bg-pitch-900/80 p-4">

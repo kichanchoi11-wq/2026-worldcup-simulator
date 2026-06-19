@@ -3,6 +3,7 @@ import Badge from "@/components/Badge";
 import FlagIcon from "@/components/FlagIcon";
 import FormationBoard from "@/components/FormationBoard";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
+import SourcedFreshInfoPanel from "@/components/SourcedFreshInfoPanel";
 import StoredTeamRecollectionPanel from "@/components/StoredTeamRecollectionPanel";
 import TeamApiStatusPanel from "@/components/TeamApiStatusPanel";
 import TeamPlayerRoster from "@/components/TeamPlayerRoster";
@@ -87,6 +88,13 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
       <TeamApiStatusPanel teamNameKo={team.nameKo} teamNameEn={detail.teamNameEn} teamCode={detail.teamCode} />
 
       <StoredTeamRecollectionPanel teamId={teamId} />
+
+      <SourcedFreshInfoPanel
+        targetType="team"
+        targetId={teamId}
+        targetName={detail.teamName}
+        relatedTeamNames={[team.nameKo, detail.teamNameEn, detail.teamCode]}
+      />
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
         <h2 className="text-xl font-black text-white">기본 정보와 감독</h2>

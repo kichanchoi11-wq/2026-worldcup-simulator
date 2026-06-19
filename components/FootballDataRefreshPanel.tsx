@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
-import { readStorage, storageKeys, writeStorage } from "@/lib/storage";
+import { persistFreshInfoSnapshotMeta } from "@/lib/freshInfoStorage";
+import { readStorage, storageKeys, writeStorageSafely } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballUsageSnapshot } from "@/types/football";
+import type { FreshInfoReflectionDiagnostics, RefreshSnapshotMeta } from "@/types/freshInfo";
 
 type PanelSize = "compact" | "full";
 
@@ -67,13 +69,20 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 
 export default function FootballDataRefreshPanel({ size = "full" }: { size?: PanelSize }) {
   const [snapshot, setSnapshot] = useState<FootballDataRefreshSnapshot | null>(null);
+  const [snapshotMeta, setSnapshotMeta] = useState<RefreshSnapshotMeta | null>(null);
+  const [freshDiagnostics, setFreshDiagnostics] = useState<FreshInfoReflectionDiagnostics | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { isAdminAuthenticated, isChecking } = useAdminAuth();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSnapshot(readStorage<FootballDataRefreshSnapshot | null>(storageKeys.footballRefreshSnapshotData, null));
+      const meta =
+        readStorage<RefreshSnapshotMeta | null>(storageKeys.footballRefreshSnapshotMetaData, null) ??
+        readStorage<RefreshSnapshotMeta | null>(storageKeys.footballRefreshSnapshotData, null);
+
+      setSnapshotMeta(meta?.snapshotId ? meta : null);
+      setFreshDiagnostics(readStorage<FreshInfoReflectionDiagnostics | null>(storageKeys.freshInfoReflectionDiagnosticsData, null));
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -94,71 +103,75 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     const aiAnalyses = asArray(data?.aiAnalyses);
     const aiStatus = data?.aiStatus;
     const providerStatus = data?.providerStatus;
+    const persisted = persistFreshInfoSnapshotMeta(nextSnapshot);
 
-    writeStorage(storageKeys.footballRefreshSnapshotData, nextSnapshot);
-    writeStorage(storageKeys.lastManualRefreshData, nextSnapshot.refreshedAt);
+    writeStorageSafely(storageKeys.lastManualRefreshData, nextSnapshot.refreshedAt);
 
     if (matches.length > 0) {
-      writeStorage(storageKeys.apiMatchesData, matches);
+      writeStorageSafely(storageKeys.apiMatchesData, matches);
     }
 
     if (standings.length > 0) {
-      writeStorage(storageKeys.apiStandingsData, standings);
+      writeStorageSafely(storageKeys.apiStandingsData, standings);
     }
 
     if (teams.length > 0) {
-      writeStorage(storageKeys.apiFootballTeamsData, teams);
+      writeStorageSafely(storageKeys.apiFootballTeamsData, teams);
     }
 
-    writeStorage(storageKeys.apiFootballResourceSnapshotsData, resourceSnapshots);
-    writeStorage(storageKeys.apiFootballPlayersData, asArray(fallbackResources?.players));
-    writeStorage(storageKeys.apiFootballCoachesData, asArray(fallbackResources?.coaches));
-    writeStorage(storageKeys.apiFootballLineupsData, asArray(fallbackResources?.lineups));
-    writeStorage(storageKeys.apiFootballEventsData, asArray(fallbackResources?.events));
-    writeStorage(storageKeys.apiFootballCardRecordsData, cardRecords);
-    writeStorage(storageKeys.apiFootballInjuriesData, asArray(fallbackResources?.injuries));
-    writeStorage(storageKeys.apiFootballStatisticsData, asArray(fallbackResources?.statistics));
-    writeStorage(storageKeys.apiFootballPredictionsData, asArray(fallbackResources?.predictions));
-    writeStorage(storageKeys.aiFreshInfoData, freshInfoResults);
+    writeStorageSafely(storageKeys.apiFootballResourceSnapshotsData, resourceSnapshots);
+    writeStorageSafely(storageKeys.apiFootballPlayersData, asArray(fallbackResources?.players));
+    writeStorageSafely(storageKeys.apiFootballCoachesData, asArray(fallbackResources?.coaches));
+    writeStorageSafely(storageKeys.apiFootballLineupsData, asArray(fallbackResources?.lineups));
+    writeStorageSafely(storageKeys.apiFootballEventsData, asArray(fallbackResources?.events));
+    writeStorageSafely(storageKeys.apiFootballCardRecordsData, cardRecords);
+    writeStorageSafely(storageKeys.apiFootballInjuriesData, asArray(fallbackResources?.injuries));
+    writeStorageSafely(storageKeys.apiFootballStatisticsData, asArray(fallbackResources?.statistics));
+    writeStorageSafely(storageKeys.apiFootballPredictionsData, asArray(fallbackResources?.predictions));
+    writeStorageSafely(storageKeys.aiFreshInfoData, freshInfoResults);
 
     if (providerStatus) {
-      writeStorage(storageKeys.apiFootballProviderStatusData, providerStatus);
-      writeStorage(storageKeys.apiFootballUsageLogsData, asArray(providerStatus.usageLogs));
-      writeStorage(storageKeys.apiFootballSyncLogsData, asArray(providerStatus.syncLogs));
+      writeStorageSafely(storageKeys.apiFootballProviderStatusData, providerStatus);
+      writeStorageSafely(storageKeys.apiFootballUsageLogsData, asArray(providerStatus.usageLogs));
+      writeStorageSafely(storageKeys.apiFootballSyncLogsData, asArray(providerStatus.syncLogs));
     }
 
-    writeStorage(storageKeys.aiAnalysesData, aiAnalyses);
+    writeStorageSafely(storageKeys.aiAnalysesData, aiAnalyses);
 
     if (aiStatus) {
-      writeStorage(storageKeys.aiStatusData, aiStatus);
+      writeStorageSafely(storageKeys.aiStatusData, aiStatus);
     }
 
     if (freshInfoStatus) {
-      writeStorage(storageKeys.aiFreshInfoStatusData, freshInfoStatus);
+      writeStorageSafely(storageKeys.aiFreshInfoStatusData, freshInfoStatus);
     }
 
-    writeStorage(
+    writeStorageSafely(
       storageKeys.teamTacticsData,
       teamAnalysisBundles.map((item) => item.coachTacticalProfile)
     );
-    writeStorage(
+    writeStorageSafely(
       storageKeys.teamFormationsData,
       teamAnalysisBundles.map((item) => item.formationProfile)
     );
-    writeStorage(
+    writeStorageSafely(
       storageKeys.teamRiskProfilesData,
       teamAnalysisBundles.map((item) => item.riskProfile)
     );
-    writeStorage(
+    writeStorageSafely(
       storageKeys.koreaVsTeamPredictionsData,
       teamAnalysisBundles.map((item) => item.koreaPrediction)
     );
 
     if (matchReviews.length > 0) {
-      writeStorage(storageKeys.matchReviewsData, matchReviews);
+      writeStorageSafely(storageKeys.matchReviewsData, matchReviews);
     }
 
     setSnapshot(nextSnapshot);
+    setSnapshotMeta(persisted.meta);
+    setFreshDiagnostics(persisted.diagnostics);
+
+    return persisted;
   }
 
   async function refresh() {
@@ -185,8 +198,8 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
 
       const nextSnapshot = payload as FootballDataRefreshSnapshot;
 
-      persistSnapshot(nextSnapshot);
-      setMessage(nextSnapshot.message);
+      const persisted = persistSnapshot(nextSnapshot);
+      setMessage(`${nextSnapshot.message} ${persisted.message}`);
     } catch {
       setMessage("일부 데이터를 불러오지 못했습니다. 기존 저장 데이터를 유지합니다.");
     } finally {
@@ -201,7 +214,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   const resourceSnapshotCount = asArray(data?.resourceSnapshots).length;
   const matchReviewCount = asArray(data?.matchReviews).length;
   const cardRecordCount = asArray(data?.cardRecords).length;
-  const freshInfoCount = asArray(data?.freshInfoResults).length;
+  const freshInfoCount = asArray(data?.freshInfoResults).length || snapshotMeta?.counts.sourcedItems || 0;
   const freshInfoStatus = data?.freshInfoStatus;
   const aiAnalysisCount = asArray(data?.aiAnalyses).length;
   const aiStatus = data?.aiStatus;
@@ -243,7 +256,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <Status label="마지막 수동 새로고침" value={formatDate(snapshot?.refreshedAt ?? null)} />
+        <Status label="마지막 수동 새로고침" value={formatDate(snapshot?.refreshedAt ?? snapshotMeta?.updatedAt ?? null)} />
         <Status label="API-Football 호출" value={`${apiUsage.used}/${apiUsage.limit}회`} />
         <Status label="남은 호출" value={`${apiUsage.remaining}회`} />
         <Status label="팀 분석 묶음" value={`${teamAnalysisCount}팀`} />
@@ -252,7 +265,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
         <Status label="경기 리뷰" value={`${matchReviewCount}개`} />
         <Status label="카드 현황 레코드" value={`${cardRecordCount}건`} />
         <Status label="AI 최신 정보" value={`${freshInfoCount}건`} />
-        <Status label="출처 기반 항목" value={freshInfoStatus ? `${freshInfoStatus.sourceBackedItemCount}건` : "아직 없음"} />
+        <Status label="출처 기반 항목" value={freshInfoStatus ? `${freshInfoStatus.sourceBackedItemCount}건` : snapshotMeta ? `${snapshotMeta.counts.sourcedItems}건` : "아직 없음"} />
         <Status label="추가 확인 필요" value={freshInfoStatus ? `${freshInfoStatus.needsReviewCount}건` : "아직 없음"} />
         <Status
           label="AI 분석"
@@ -277,6 +290,21 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
           <p className="mt-2 text-emerald-50/80">
             마지막 검색: {formatDate(freshInfoStatus.lastSearchedAt)} · 경기 {freshInfoStatus.targetMatchCount}건 · 팀{" "}
             {freshInfoStatus.targetTeamCount}건 · fallback {freshInfoStatus.fallbackCount}건 · timeout {freshInfoStatus.timeoutCount}건
+          </p>
+        </div>
+      ) : null}
+
+      {freshDiagnostics ? (
+        <div className="mt-4 rounded border border-cyan-300/25 bg-cyan-400/10 p-3 text-sm text-cyan-50">
+          <p className="font-black">최신 정보 반영 진단</p>
+          <p className="mt-1">
+            검색 결과 수집 {freshDiagnostics.collectedResults}건 · 정규화 {freshDiagnostics.normalizedItems}건 · 매핑 성공 {freshDiagnostics.targetMappingSuccess}건 · 경기 상세 {freshDiagnostics.matchDetailReflected}건 · 팀 상세 {freshDiagnostics.teamDetailReflected}건
+          </p>
+          <p className="mt-1 text-cyan-50/75">
+            카드 {freshDiagnostics.counts.cards}건 · 부상 {freshDiagnostics.counts.injuries}건 · 징계 {freshDiagnostics.counts.suspensions}건 · 라인업/포메이션 {freshDiagnostics.counts.lineups + freshDiagnostics.counts.formations}건 · 체력 {freshDiagnostics.counts.fitness}건 · 리뷰 {freshDiagnostics.counts.reviews}건
+          </p>
+          <p className="mt-1 text-cyan-50/75">
+            저장 방식 {freshDiagnostics.storage.mode} · 원본 {freshDiagnostics.storage.originalSnapshotBytes.toLocaleString("ko-KR")} bytes · 메타 {freshDiagnostics.storage.metaBytes.toLocaleString("ko-KR")} bytes · 정규화 {freshDiagnostics.storage.normalizedBytes.toLocaleString("ko-KR")} bytes
           </p>
         </div>
       ) : null}

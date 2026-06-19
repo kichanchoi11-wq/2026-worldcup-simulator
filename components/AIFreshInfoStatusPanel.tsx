@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
-import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/storage";
+import { persistFreshInfoSnapshotMeta } from "@/lib/freshInfoStorage";
+import { readArrayStorage, readStorage, storageKeys, writeStorageSafely } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
-import type { AIFreshInfoResult, AIFreshInfoStatus } from "@/types/freshInfo";
+import type { AIFreshInfoResult, AIFreshInfoStatus, FreshInfoReflectionDiagnostics } from "@/types/freshInfo";
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -27,19 +28,23 @@ function asArray<T>(value: T[] | undefined): T[] {
 }
 
 function persistSnapshot(snapshot: FootballDataRefreshSnapshot) {
-  writeStorage(storageKeys.footballRefreshSnapshotData, snapshot);
-  writeStorage(storageKeys.lastManualRefreshData, snapshot.refreshedAt);
-  writeStorage(storageKeys.aiFreshInfoData, asArray(snapshot.data.freshInfoResults));
-  writeStorage(storageKeys.aiFreshInfoStatusData, snapshot.data.freshInfoStatus);
-  writeStorage(storageKeys.apiFootballProviderStatusData, snapshot.data.providerStatus);
-  writeStorage(storageKeys.apiFootballResourceSnapshotsData, asArray(snapshot.data.resourceSnapshots));
-  writeStorage(storageKeys.apiMatchesData, asArray(snapshot.data.matches));
-  writeStorage(storageKeys.apiStandingsData, asArray(snapshot.data.standings));
+  const persisted = persistFreshInfoSnapshotMeta(snapshot);
+
+  writeStorageSafely(storageKeys.lastManualRefreshData, snapshot.refreshedAt);
+  writeStorageSafely(storageKeys.aiFreshInfoData, asArray(snapshot.data.freshInfoResults));
+  writeStorageSafely(storageKeys.aiFreshInfoStatusData, snapshot.data.freshInfoStatus);
+  writeStorageSafely(storageKeys.apiFootballProviderStatusData, snapshot.data.providerStatus);
+  writeStorageSafely(storageKeys.apiFootballResourceSnapshotsData, asArray(snapshot.data.resourceSnapshots));
+  writeStorageSafely(storageKeys.apiMatchesData, asArray(snapshot.data.matches));
+  writeStorageSafely(storageKeys.apiStandingsData, asArray(snapshot.data.standings));
+
+  return persisted;
 }
 
 export default function AIFreshInfoStatusPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
   const [results, setResults] = useState<AIFreshInfoResult[]>([]);
   const [status, setStatus] = useState<AIFreshInfoStatus | null>(null);
+  const [diagnostics, setDiagnostics] = useState<FreshInfoReflectionDiagnostics | null>(null);
   const [providerStatus, setProviderStatus] = useState<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,6 +53,7 @@ export default function AIFreshInfoStatusPanel({ onSnapshotChange }: { onSnapsho
   function loadStoredData() {
     setResults(readArrayStorage<AIFreshInfoResult>(storageKeys.aiFreshInfoData));
     setStatus(readStorage<AIFreshInfoStatus | null>(storageKeys.aiFreshInfoStatusData, null));
+    setDiagnostics(readStorage<FreshInfoReflectionDiagnostics | null>(storageKeys.freshInfoReflectionDiagnosticsData, null));
     setProviderStatus(readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null));
   }
 
@@ -81,11 +87,12 @@ export default function AIFreshInfoStatusPanel({ onSnapshotChange }: { onSnapsho
       }
 
       const snapshot = payload as FootballDataRefreshSnapshot;
-      persistSnapshot(snapshot);
+      const persisted = persistSnapshot(snapshot);
       setResults(asArray(snapshot.data.freshInfoResults));
       setStatus(snapshot.data.freshInfoStatus);
+      setDiagnostics(persisted.diagnostics);
       setProviderStatus(snapshot.data.providerStatus);
-      setMessage(snapshot.message);
+      setMessage(`${snapshot.message} ${persisted.message}`);
       onSnapshotChange?.();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "최신 정보 새로고침에 실패했습니다.");
@@ -153,6 +160,18 @@ export default function AIFreshInfoStatusPanel({ onSnapshotChange }: { onSnapsho
 
       {status ? (
         <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm font-semibold text-white/78">{status.message}</p>
+      ) : null}
+      {diagnostics ? (
+        <div className="mt-4 rounded border border-cyan-300/25 bg-cyan-400/10 p-3 text-sm text-cyan-50">
+          <p className="font-black">최신 정보 반영 결과</p>
+          <p className="mt-1">
+            수집 {diagnostics.collectedResults}건 · 정규화 {diagnostics.normalizedItems}건 · 매핑 성공 {diagnostics.targetMappingSuccess}건 · 경기 상세 {diagnostics.matchDetailReflected}건 · 팀 상세 {diagnostics.teamDetailReflected}건
+          </p>
+          <p className="mt-1 text-cyan-50/75">
+            localStorage 저장 방식: {diagnostics.storage.mode} · 원본 {diagnostics.storage.originalSnapshotBytes.toLocaleString("ko-KR")} bytes · 메타 {diagnostics.storage.metaBytes.toLocaleString("ko-KR")} bytes · 정규화 {diagnostics.storage.normalizedBytes.toLocaleString("ko-KR")} bytes
+          </p>
+          <p className="mt-1 text-cyan-50/75">{diagnostics.storage.message}</p>
+        </div>
       ) : null}
       {message ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm font-semibold text-white/78">{message}</p> : null}
 

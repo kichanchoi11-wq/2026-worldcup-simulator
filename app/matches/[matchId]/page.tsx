@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Badge from "@/components/Badge";
 import FormationBoard from "@/components/FormationBoard";
+import SourcedFreshInfoPanel from "@/components/SourcedFreshInfoPanel";
 import StoredMatchRecollectionPanel from "@/components/StoredMatchRecollectionPanel";
 import { createMatchPageData, getAllMatchIds, getMatchDetailById } from "@/data/matchDetails";
 import { createMatchReview, createMatchReviewPlaceholder } from "@/lib/matchReviewService";
@@ -68,6 +69,13 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         awayTeamId={match.awayTeamId}
         homeTeamName={match.homeTeamName}
         awayTeamName={match.awayTeamName}
+      />
+
+      <SourcedFreshInfoPanel
+        targetType="match"
+        targetId={match.matchId}
+        targetName={`${match.homeTeamName ?? "홈팀"} vs ${match.awayTeamName ?? "원정팀"}`}
+        relatedTeamNames={[match.homeTeamName, match.awayTeamName]}
       />
 
       <section className="rounded border border-white/10 bg-white/[0.06] p-5 shadow-panel">
