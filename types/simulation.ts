@@ -221,7 +221,7 @@ export interface FullTournamentPrediction {
   confidence: PredictionDataConfidence;
   notice: string;
   aiAnalysis?: {
-    status: "success" | "fallback" | "cache" | "failed";
+    status: "success" | "partial" | "fallback" | "cache" | "failed";
     provider: "groq" | "openrouter" | "cache" | "rule-based";
     model: string | null;
     summary: string;

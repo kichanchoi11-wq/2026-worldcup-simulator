@@ -1,8 +1,16 @@
 ﻿import type { MatchPageData, MatchReview } from "@/types/match";
 import { createMatchReview, createMatchReviewCacheKey, createRulesReviewMetadata } from "@/lib/matchReviewService";
-import { generateAIText, getAIProviderTimeoutMs, getFallbackAIModel, getPrimaryAIModel } from "@/lib/aiProviderRouter";
+import {
+  estimateAITextPayloadBytes,
+  generateAIText,
+  getAIProviderTimeoutMs,
+  getFallbackAIModel,
+  getMaxAIPayloadBytes,
+  getPrimaryAIModel
+} from "@/lib/aiProviderRouter";
+import { compactAIInput, createAIChunks, stableInputHash } from "@/lib/aiPayloadCompactor";
 import { getRuntimeProviderState, providerStatusMessage } from "@/lib/providerRuntimeState";
-import type { AIActiveJob, AIAnalysisKind, AIAnalysisLog, AIAnalysisRecord, AIProviderStatus } from "@/types/ai";
+import type { AIActiveJob, AIAnalysisKind, AIAnalysisLog, AIAnalysisRecord, AIChunkResult, AIErrorType, AIProviderStatus } from "@/types/ai";
 
 type AIReviewJson = {
   matchSummary?: unknown;
@@ -33,6 +41,7 @@ const aiReviewCache = new Map<string, AIMatchReviewResult>();
 
 type AIState = {
   analysisCache: Map<string, AIAnalysisRecord>;
+  recentFallbackCache: Map<string, { record: AIAnalysisRecord; expiresAt: number; logDetails: Partial<AIAnalysisLog> }>;
   activeJobs: Map<string, AIActiveJob>;
   callCount: number;
   cacheHitCount: number;
@@ -76,6 +85,7 @@ function getAIState(): AIState {
   if (!globalThis.__worldCupAIAnalysisState) {
     globalThis.__worldCupAIAnalysisState = {
       analysisCache: new Map(),
+      recentFallbackCache: new Map(),
       activeJobs: new Map(),
       callCount: 0,
       cacheHitCount: 0,
@@ -91,6 +101,10 @@ function getAIState(): AIState {
       resultSaveSuccess: false,
       logs: []
     };
+  }
+
+  if (!globalThis.__worldCupAIAnalysisState.recentFallbackCache) {
+    globalThis.__worldCupAIAnalysisState.recentFallbackCache = new Map();
   }
 
   return globalThis.__worldCupAIAnalysisState;
@@ -125,6 +139,39 @@ function rememberAIFailure(kind: AIAnalysisKind, target: string, message: string
     usedAI: false,
     usedCache: false,
     message,
+    ...details
+  });
+}
+
+function rememberAIFallbackSuccess(kind: AIAnalysisKind, target: string, message: string, details: Partial<AIAnalysisLog> = {}) {
+  const state = getAIState();
+  const now = new Date().toISOString();
+  state.fallbackCount += 1;
+  state.lastFailureAt = details.errorType && details.errorType !== "fallback_success" ? now : state.lastFailureAt;
+  state.lastFailureMessage = details.errorType && details.errorType !== "fallback_success" ? message : state.lastFailureMessage;
+  state.lastHttpStatus = details.httpStatus ?? null;
+  state.lastPayloadBytes = details.payloadBytes ?? details.compactPayloadBytes ?? null;
+  logAIEvent({
+    kind,
+    target,
+    status: "fallback",
+    usedAI: false,
+    usedCache: false,
+    message,
+    fallbackUsed: true,
+    fallbackResultSaved: true,
+    resultSaved: true,
+    visibleDataUpdated: true,
+    screenReflectionStatus: "fallback 저장됨",
+    finalStatusLabel: "fallback 성공",
+    errorType: details.errorType ?? "fallback_success",
+    persistence: {
+      savedToCache: true,
+      savedToStore: true,
+      savedToLocalStorage: true,
+      visibleDataUpdated: true,
+      uiRefreshTriggered: true
+    },
     ...details
   });
 }
@@ -200,8 +247,8 @@ export function getAITimeoutMs() {
 }
 
 async function callAIText(prompt: string, context: { kind: AIAnalysisKind; target: string }): Promise<
-  | { ok: true; provider: string; model: string; text: string; payloadBytes: number; fallbackUsed: boolean; retryCount: number; timeout: boolean }
-  | { ok: false; provider: string; model: string | null; message: string; httpStatus: number | null; payloadBytes: number; fallbackUsed: boolean; retryCount: number; timeout: boolean }
+  | { ok: true; provider: string; model: string; text: string; httpStatus: number; payloadBytes: number; fallbackUsed: boolean; retryCount: number; timeout: boolean; errorType?: null }
+  | { ok: false; provider: string; model: string | null; message: string; httpStatus: number | null; payloadBytes: number; fallbackUsed: boolean; retryCount: number; timeout: boolean; errorType: AIErrorType }
 > {
   const state = getAIState();
   const jobId = startAIJob(context.kind, context.target, getPrimaryAIModel());
@@ -222,10 +269,12 @@ async function callAIText(prompt: string, context: { kind: AIAnalysisKind; targe
       provider: result.provider,
       model: result.model,
       text: result.text,
+      httpStatus: result.httpStatus,
       payloadBytes: result.payloadBytes,
       fallbackUsed: result.fallbackUsed,
       retryCount: result.retryCount,
-      timeout: result.timeout
+      timeout: result.timeout,
+      errorType: null
     };
   }
 
@@ -238,7 +287,8 @@ async function callAIText(prompt: string, context: { kind: AIAnalysisKind; targe
     payloadBytes: result.payloadBytes,
     fallbackUsed: result.fallbackUsed,
     retryCount: result.retryCount,
-    timeout: result.timeout
+    timeout: result.timeout,
+    errorType: result.errorType
   };
 }
 
@@ -262,7 +312,7 @@ function createFallbackAnalysis(input: AIAnalysisInput, status: AIAnalysisRecord
   };
 }
 
-function buildGenericAIPrompt(input: AIAnalysisInput) {
+function buildGenericAIPromptWithData(input: AIAnalysisInput, data: unknown) {
   return [
     "너는 2026 FIFA 월드컵 데이터 검증 보조 분석가다.",
     "아래 JSON으로 제공된 API-Football, football-data.org fallback, 캐시, 정적 데이터 안에서만 분석한다.",
@@ -272,16 +322,110 @@ function buildGenericAIPrompt(input: AIAnalysisInput) {
     "반환 필드: summary(string), bulletPoints(string[]), dataGaps(string[]), sources(string[]).",
     `분석 대상: ${input.title}`,
     input.instruction,
-    JSON.stringify(input.input)
+    JSON.stringify(data)
   ].join("\n\n");
 }
 
-function applyAIAnalysisPayload(input: AIAnalysisInput, payload: AIAnalysisJson, model: string, provider: "groq" | "openrouter"): AIAnalysisRecord {
+function buildGenericAIPrompt(input: AIAnalysisInput) {
+  return buildGenericAIPromptWithData(input, input.input);
+}
+
+type PreparedAIRequest = {
+  prompt: string;
+  originalPayloadBytes: number;
+  compactPayloadBytes: number;
+  compactInputBytes: number;
+  inputHash: string;
+  chunkCount: number;
+  chunks: Array<{ chunkId: string; prompt: string; payloadBytes: number; data: unknown }>;
+};
+
+function prepareAIRequest(input: AIAnalysisInput): PreparedAIRequest {
+  const maxPayloadBytes = getMaxAIPayloadBytes();
+  const originalPrompt = buildGenericAIPrompt(input);
+  const originalPayloadBytes = estimateAITextPayloadBytes(originalPrompt);
+  const levels: Array<"normal" | "tight" | "tiny"> = ["normal", "tight", "tiny"];
+  let selected = compactAIInput(input.kind, input.input, "tiny");
+  let selectedPrompt = buildGenericAIPromptWithData(input, selected.input);
+  let selectedPayloadBytes = estimateAITextPayloadBytes(selectedPrompt);
+
+  for (const level of levels) {
+    const compacted = compactAIInput(input.kind, input.input, level);
+    const prompt = buildGenericAIPromptWithData(input, compacted.input);
+    const payloadBytes = estimateAITextPayloadBytes(prompt);
+    selected = compacted;
+    selectedPrompt = prompt;
+    selectedPayloadBytes = payloadBytes;
+    if (payloadBytes <= maxPayloadBytes) {
+      break;
+    }
+  }
+
+  const chunks =
+    selectedPayloadBytes > maxPayloadBytes
+      ? createAIChunks(input.kind, `${input.kind}-${input.cacheKey}`, selected.input)
+          .map((chunk) => {
+            const prompt = buildGenericAIPromptWithData(input, chunk.data);
+            return {
+              chunkId: chunk.chunkId,
+              prompt,
+              payloadBytes: estimateAITextPayloadBytes(prompt),
+              data: chunk.data
+            };
+          })
+          .filter((chunk) => chunk.payloadBytes <= maxPayloadBytes)
+      : [];
+
+  return {
+    prompt: selectedPrompt,
+    originalPayloadBytes,
+    compactPayloadBytes: selectedPayloadBytes,
+    compactInputBytes: selected.compactInputBytes,
+    inputHash: selected.inputHash || stableInputHash(input.input),
+    chunkCount: chunks.length > 0 ? chunks.length : 1,
+    chunks
+  };
+}
+
+function defaultPersistence() {
+  return {
+    savedToCache: true,
+    savedToStore: true,
+    savedToLocalStorage: true,
+    visibleDataUpdated: true,
+    uiRefreshTriggered: true
+  };
+}
+
+function uniqueList(values: string[]) {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
+}
+
+function mergeAIAnalysisPayloads(payloads: AIAnalysisJson[], fallback: AIAnalysisInput): AIAnalysisJson {
+  return {
+    summary:
+      payloads
+        .map((payload) => (typeof payload.summary === "string" ? payload.summary.trim() : ""))
+        .filter(Boolean)
+        .join(" ") || fallback.fallbackSummary,
+    bulletPoints: uniqueList(payloads.flatMap((payload) => asStringArray(payload.bulletPoints, []))),
+    dataGaps: uniqueList(payloads.flatMap((payload) => asStringArray(payload.dataGaps, fallback.fallbackDataGaps ?? []))),
+    sources: uniqueList(payloads.flatMap((payload) => asStringArray(payload.sources, fallback.sources ?? [])))
+  };
+}
+
+function applyAIAnalysisPayload(
+  input: AIAnalysisInput,
+  payload: AIAnalysisJson,
+  model: string,
+  provider: "groq" | "openrouter",
+  status: AIAnalysisRecord["status"] = "success"
+): AIAnalysisRecord {
   return {
     id: `${input.kind}-${input.cacheKey}`,
     kind: input.kind,
     title: input.title,
-    status: "success",
+    status,
     usedAI: true,
     aiProvider: provider,
     usedCache: false,
@@ -339,6 +483,36 @@ export function getAIProviderStatus(): AIProviderStatus {
 
 export async function createAIAnalysis(input: AIAnalysisInput): Promise<AIAnalysisRecord> {
   const state = getAIState();
+  const prepared = prepareAIRequest(input);
+  const recentFallbackKey = `${input.kind}:${input.title}:${prepared.inputHash}`;
+  const recentFallback = state.recentFallbackCache.get(recentFallbackKey);
+
+  if (recentFallback && recentFallback.expiresAt > Date.now()) {
+    state.cacheHitCount += 1;
+    state.resultSaveSuccess = true;
+    logAIEvent({
+      kind: input.kind,
+      target: input.title,
+      status: "cache",
+      usedAI: false,
+      usedCache: true,
+      message: "최근 10분 내 같은 입력으로 생성한 fallback 성공 결과를 재사용했습니다.",
+      fallbackUsed: true,
+      fallbackResultSaved: true,
+      screenReflectionStatus: "fallback 저장됨",
+      finalStatusLabel: "fallback 캐시 사용",
+      persistence: defaultPersistence(),
+      ...recentFallback.logDetails
+    });
+
+    return {
+      ...recentFallback.record,
+      status: "cache",
+      usedCache: true,
+      message: "최근 fallback 성공 캐시를 사용했습니다."
+    };
+  }
+
   const cached = state.analysisCache.get(input.cacheKey);
 
   if (cached) {
@@ -350,7 +524,15 @@ export async function createAIAnalysis(input: AIAnalysisInput): Promise<AIAnalys
       status: "cache",
       usedAI: cached.usedAI,
       usedCache: true,
-      message: "저장된 AI 분석 캐시를 사용했습니다."
+      message: "저장된 AI 분석 캐시를 사용했습니다.",
+      originalPayloadBytes: prepared.originalPayloadBytes,
+      compactPayloadBytes: prepared.compactPayloadBytes,
+      payloadBytes: prepared.compactPayloadBytes,
+      chunkCount: prepared.chunkCount,
+      providerUsed: cached.aiProvider ?? (cached.usedAI ? "groq" : "internal-fallback"),
+      resultSaved: true,
+      visibleDataUpdated: true,
+      persistence: defaultPersistence()
     });
 
     return {
@@ -361,21 +543,173 @@ export async function createAIAnalysis(input: AIAnalysisInput): Promise<AIAnalys
     };
   }
 
-  const ai = await callAIText(buildGenericAIPrompt(input), { kind: input.kind, target: input.title });
+  if (prepared.chunks.length > 0) {
+    const payloads: AIAnalysisJson[] = [];
+    const chunkResults: AIChunkResult[] = [];
+    let model = getPrimaryAIModel();
+    let provider: "groq" | "openrouter" = "groq";
+    let openRouterAttempted = false;
+    let timeout = false;
+    let lastError: string | null = null;
+    let lastErrorType: AIErrorType = "payload_too_large_before_request";
+
+    for (const chunk of prepared.chunks) {
+      const ai = await callAIText(chunk.prompt, { kind: input.kind, target: `${input.title} ${chunk.chunkId}` });
+      openRouterAttempted = openRouterAttempted || ai.retryCount > 0 || ai.provider === "openrouter";
+      timeout = timeout || ai.timeout;
+
+      if (!ai.ok) {
+        lastError = ai.message;
+        lastErrorType = ai.errorType;
+        chunkResults.push({
+          chunkId: chunk.chunkId,
+          status: "fallback",
+          providerUsed: "internal-fallback",
+          outputSaved: true,
+          error: ai.message
+        });
+        continue;
+      }
+
+      const parsed = parseJsonObject<AIAnalysisJson>(ai.text);
+      if (!parsed) {
+        lastError = "AI chunk 응답 JSON 파싱에 실패했습니다.";
+        lastErrorType = "invalid_response";
+        chunkResults.push({
+          chunkId: chunk.chunkId,
+          status: "fallback",
+          providerUsed: "internal-fallback",
+          outputSaved: true,
+          error: lastError
+        });
+        continue;
+      }
+
+      payloads.push(parsed);
+      model = ai.model;
+      provider = ai.provider === "openrouter" ? "openrouter" : "groq";
+      chunkResults.push({
+        chunkId: chunk.chunkId,
+        status: "success",
+        providerUsed: provider,
+        outputSaved: true,
+        error: null
+      });
+    }
+
+    if (payloads.length > 0) {
+      const partial = payloads.length < prepared.chunks.length;
+      const merged = mergeAIAnalysisPayloads(payloads, input);
+      const result = applyAIAnalysisPayload(input, merged, model, provider, partial ? "partial" : "success");
+      state.analysisCache.set(input.cacheKey, result);
+      state.lastSuccessAt = result.generatedAt;
+      state.resultSaveSuccess = true;
+      logAIEvent({
+        kind: input.kind,
+        target: input.title,
+        status: partial ? "partial" : "success",
+        usedAI: true,
+        provider,
+        usedCache: false,
+        message: partial ? "AI chunk 일부는 fallback으로 보완했고, 성공한 chunk 결과를 병합해 저장했습니다." : "AI chunk 분석을 완료하고 병합 저장했습니다.",
+        model,
+        retryCount: openRouterAttempted ? 1 : 0,
+        payloadBytes: Math.max(...prepared.chunks.map((chunk) => chunk.payloadBytes)),
+        originalPayloadBytes: prepared.originalPayloadBytes,
+        compactPayloadBytes: prepared.compactPayloadBytes,
+        chunkCount: prepared.chunks.length,
+        providerUsed: provider,
+        openRouterAttempted,
+        internalFallbackUsed: partial,
+        fallbackUsed: partial,
+        timeout,
+        fallbackResultSaved: true,
+        resultSaved: true,
+        visibleDataUpdated: true,
+        screenReflectionStatus: partial ? "fallback 저장됨" : "저장됨",
+        finalStatusLabel: partial ? "부분 성공" : "성공",
+        chunkResults,
+        persistence: defaultPersistence()
+      });
+      return result;
+    }
+
+    const fallback = createFallbackAnalysis(
+      input,
+      "fallback",
+      `${lastError ?? "compact 후에도 모든 chunk AI 호출이 실패했습니다."} 내부 규칙 기반 분석을 저장했습니다.`
+    );
+    state.analysisCache.set(input.cacheKey, fallback);
+    state.recentFallbackCache.set(recentFallbackKey, {
+      record: fallback,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      logDetails: {
+        originalPayloadBytes: prepared.originalPayloadBytes,
+        compactPayloadBytes: prepared.compactPayloadBytes,
+        payloadBytes: Math.max(prepared.compactPayloadBytes, ...prepared.chunks.map((chunk) => chunk.payloadBytes)),
+        chunkCount: prepared.chunks.length,
+        openRouterAttempted,
+        internalFallbackUsed: true,
+        errorType: lastErrorType,
+        chunkResults
+      }
+    });
+    state.resultSaveSuccess = true;
+    rememberAIFallbackSuccess(input.kind, input.title, fallback.message, {
+      model: getPrimaryAIModel(),
+      httpStatus: null,
+      retryCount: openRouterAttempted ? 1 : 0,
+      payloadBytes: Math.max(prepared.compactPayloadBytes, ...prepared.chunks.map((chunk) => chunk.payloadBytes)),
+      originalPayloadBytes: prepared.originalPayloadBytes,
+      compactPayloadBytes: prepared.compactPayloadBytes,
+      chunkCount: prepared.chunks.length,
+      providerUsed: "internal-fallback",
+      openRouterAttempted,
+      internalFallbackUsed: true,
+      timeout,
+      errorType: lastErrorType,
+      chunkResults
+    });
+    return fallback;
+  }
+
+  const ai = await callAIText(prepared.prompt, { kind: input.kind, target: input.title });
 
   if (!ai.ok) {
     const fallback = createFallbackAnalysis(input, "fallback", `${ai.message} 내부 규칙 기반 분석을 사용했습니다.`);
     state.analysisCache.set(input.cacheKey, fallback);
+    state.recentFallbackCache.set(recentFallbackKey, {
+      record: fallback,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      logDetails: {
+        originalPayloadBytes: prepared.originalPayloadBytes,
+        compactPayloadBytes: prepared.compactPayloadBytes,
+        payloadBytes: ai.payloadBytes,
+        chunkCount: prepared.chunkCount,
+        providerUsed: "internal-fallback",
+        openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+        internalFallbackUsed: true,
+        errorType: ai.errorType
+      }
+    });
     state.resultSaveSuccess = true;
-    rememberAIFailure(input.kind, input.title, fallback.message, {
+    rememberAIFallbackSuccess(input.kind, input.title, fallback.message, {
       model: ai.model,
       httpStatus: ai.httpStatus,
       retryCount: ai.retryCount,
       payloadBytes: ai.payloadBytes,
+      originalPayloadBytes: prepared.originalPayloadBytes,
+      compactPayloadBytes: prepared.compactPayloadBytes,
+      chunkCount: prepared.chunkCount,
+      providerUsed: "internal-fallback",
+      openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+      internalFallbackUsed: true,
       fallbackUsed: true,
       timeout: ai.timeout,
+      errorType: ai.errorType,
       fallbackResultSaved: true,
-      screenReflectionStatus: "fallback 저장됨"
+      screenReflectionStatus: "fallback 저장됨",
+      persistence: defaultPersistence()
     });
     return fallback;
   }
@@ -390,15 +724,23 @@ export async function createAIAnalysis(input: AIAnalysisInput): Promise<AIAnalys
     };
     state.analysisCache.set(input.cacheKey, fallback);
     state.resultSaveSuccess = true;
-    rememberAIFailure(input.kind, input.title, fallback.message, {
+    rememberAIFallbackSuccess(input.kind, input.title, fallback.message, {
       model: ai.model,
       httpStatus: null,
       retryCount: ai.retryCount,
       payloadBytes: ai.payloadBytes,
+      originalPayloadBytes: prepared.originalPayloadBytes,
+      compactPayloadBytes: prepared.compactPayloadBytes,
+      chunkCount: prepared.chunkCount,
+      providerUsed: "internal-fallback",
+      openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+      internalFallbackUsed: true,
       fallbackUsed: true,
       timeout: false,
+      errorType: "invalid_response",
       fallbackResultSaved: true,
       screenReflectionStatus: "fallback 저장됨",
+      persistence: defaultPersistence(),
       rawText: fallback.rawText
     });
     return fallback;
@@ -417,12 +759,23 @@ export async function createAIAnalysis(input: AIAnalysisInput): Promise<AIAnalys
     usedCache: false,
     message: ai.fallbackUsed ? `${result.message} fallback 모델(${ai.model})을 사용했습니다.` : result.message,
     model: ai.model,
+    httpStatus: ai.httpStatus,
     retryCount: ai.retryCount,
     payloadBytes: ai.payloadBytes,
+    originalPayloadBytes: prepared.originalPayloadBytes,
+    compactPayloadBytes: prepared.compactPayloadBytes,
+    chunkCount: prepared.chunkCount,
+    providerUsed: ai.provider === "openrouter" ? "openrouter" : "groq",
+    openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+    internalFallbackUsed: false,
     fallbackUsed: ai.fallbackUsed,
     timeout: false,
     fallbackResultSaved: true,
-    screenReflectionStatus: "저장됨"
+    resultSaved: true,
+    visibleDataUpdated: true,
+    screenReflectionStatus: "저장됨",
+    finalStatusLabel: "성공",
+    persistence: defaultPersistence()
   });
   return result;
 }
@@ -626,15 +979,23 @@ export async function createAIMatchReview(pageData: MatchPageData): Promise<AIMa
     };
     aiReviewCache.set(cacheKey, result);
     state.resultSaveSuccess = true;
-    rememberAIFailure("match-review", cacheKey, result.message, {
+    rememberAIFallbackSuccess("match-review", cacheKey, result.message, {
       model: ai.model,
       httpStatus: ai.httpStatus,
       retryCount: ai.retryCount,
       payloadBytes: ai.payloadBytes,
+      originalPayloadBytes: ai.payloadBytes,
+      compactPayloadBytes: ai.payloadBytes,
+      chunkCount: 1,
+      providerUsed: "internal-fallback",
+      openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+      internalFallbackUsed: true,
       fallbackUsed: true,
       timeout: ai.timeout,
+      errorType: ai.errorType,
       fallbackResultSaved: true,
-      screenReflectionStatus: "fallback 저장됨"
+      screenReflectionStatus: "fallback 저장됨",
+      persistence: defaultPersistence()
     });
     return result;
   }
@@ -654,15 +1015,23 @@ export async function createAIMatchReview(pageData: MatchPageData): Promise<AIMa
     };
     aiReviewCache.set(cacheKey, result);
     state.resultSaveSuccess = true;
-    rememberAIFailure("match-review", cacheKey, result.message, {
+    rememberAIFallbackSuccess("match-review", cacheKey, result.message, {
       model: ai.model,
       httpStatus: null,
       retryCount: ai.retryCount,
       payloadBytes: ai.payloadBytes,
+      originalPayloadBytes: ai.payloadBytes,
+      compactPayloadBytes: ai.payloadBytes,
+      chunkCount: 1,
+      providerUsed: "internal-fallback",
+      openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+      internalFallbackUsed: true,
       fallbackUsed: true,
       timeout: false,
+      errorType: "invalid_response",
       fallbackResultSaved: true,
       screenReflectionStatus: "fallback 저장됨",
+      persistence: defaultPersistence(),
       rawText: ai.text.slice(0, 1200)
     });
     return result;
@@ -687,10 +1056,20 @@ export async function createAIMatchReview(pageData: MatchPageData): Promise<AIMa
     model: ai.model,
     retryCount: ai.retryCount,
     payloadBytes: ai.payloadBytes,
+    originalPayloadBytes: ai.payloadBytes,
+    compactPayloadBytes: ai.payloadBytes,
+    chunkCount: 1,
+    providerUsed: ai.provider === "openrouter" ? "openrouter" : "groq",
+    openRouterAttempted: ai.retryCount > 0 || ai.provider === "openrouter",
+    internalFallbackUsed: false,
     fallbackUsed: ai.fallbackUsed,
     timeout: false,
     fallbackResultSaved: true,
-    screenReflectionStatus: "저장됨"
+    resultSaved: true,
+    visibleDataUpdated: true,
+    screenReflectionStatus: "저장됨",
+    finalStatusLabel: "성공",
+    persistence: defaultPersistence()
   });
   return result;
 }

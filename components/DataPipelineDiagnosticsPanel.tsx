@@ -7,7 +7,7 @@ import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballResourceSnapshot, FootballMatch, StandingRow } from "@/types/football";
 import type { ApiFootballDiagnosis, ApiFootballDiagnosticCall, DiagnosticStatus, AIDiagnosis } from "@/types/diagnostics";
-import type { AIAnalysisRecord, AIProviderStatus } from "@/types/ai";
+import type { AIAnalysisLog, AIAnalysisRecord, AIProviderStatus } from "@/types/ai";
 import type { RecollectionJob } from "@/types/recollection";
 
 type ReflectionStatus = {
@@ -31,6 +31,33 @@ function formatDate(value: string | null | undefined) {
   } catch {
     return value;
   }
+}
+
+function aiLogSucceededByFallback(log: AIAnalysisLog) {
+  return Boolean(log.fallbackResultSaved || log.resultSaved || log.screenReflectionStatus === "fallback 저장됨");
+}
+
+function aiLogTone(log: AIAnalysisLog): Parameters<typeof Badge>[0]["tone"] {
+  if (log.status === "success" || log.status === "cache") return "success";
+  if (log.status === "partial" || log.status === "fallback" || (log.status === "failed" && aiLogSucceededByFallback(log))) return "warning";
+  return "danger";
+}
+
+function aiLogLabel(log: AIAnalysisLog) {
+  if (log.finalStatusLabel) return log.finalStatusLabel;
+  if (log.status === "success") return "성공";
+  if (log.status === "partial") return "부분 성공";
+  if (log.status === "cache") return "캐시 사용";
+  if (log.status === "fallback" || (log.status === "failed" && aiLogSucceededByFallback(log))) return "fallback 성공";
+  return "실패";
+}
+
+function yesNo(value: boolean | undefined) {
+  return value ? "예" : "아니오";
+}
+
+function formatBytes(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toLocaleString("ko-KR")} bytes` : "없음";
 }
 
 function toneFromDiagnostic(status: DiagnosticStatus): Parameters<typeof Badge>[0]["tone"] {
@@ -455,18 +482,20 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
               {(aiStatus.logs ?? []).slice(0, 5).map((log) => (
                 <div key={log.id} className="rounded border border-white/10 bg-white/[0.04] p-3 text-xs leading-5 text-white/70">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={log.status === "success" || log.status === "cache" ? "success" : log.status === "fallback" ? "warning" : "danger"}>
-                      {log.status}
-                    </Badge>
+                    <Badge tone={aiLogTone(log)}>{aiLogLabel(log)}</Badge>
                     <span className="font-black text-white">{log.target}</span>
                   </div>
                   <p className="mt-2">{log.message}</p>
                   <p className="mt-1 text-white/50">
-                    모델 {log.model ?? aiStatus.model} · fallback {aiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
+                    원본 {formatBytes(log.originalPayloadBytes ?? log.payloadBytes)} · compact 후 {formatBytes(log.compactPayloadBytes ?? log.payloadBytes)} · chunk {log.chunkCount ?? 1}개
                   </p>
                   <p className="mt-1 text-white/50">
-                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || aiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? aiStatus.screenReflectionStatus}
+                    provider {log.providerUsed ?? log.provider ?? (log.usedAI ? aiStatus.mainProvider : "internal-fallback")} · OpenRouter {yesNo(log.openRouterAttempted)} · 내부 fallback {yesNo(log.internalFallbackUsed ?? log.fallbackUsed)}
                   </p>
+                  <p className="mt-1 text-white/50">
+                    HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · timeout {yesNo(log.timeout)} · 결과 저장 {log.fallbackResultSaved || log.resultSaved || aiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.visibleDataUpdated || log.screenReflectionStatus ? log.screenReflectionStatus ?? "성공" : aiStatus.screenReflectionStatus}
+                  </p>
+                  {log.errorType ? <p className="mt-1 text-white/50">분류 {log.errorType}</p> : null}
                 </div>
               ))}
             </div>

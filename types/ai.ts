@@ -5,10 +5,38 @@
   | "risk-summary"
   | "match-review";
 
-export type AIAnalysisStatus = "success" | "fallback" | "cache" | "failed";
+export type AIAnalysisStatus = "success" | "partial" | "fallback" | "cache" | "failed";
 export type AIProviderName = "groq" | "openrouter" | "cache" | "rule-based";
 export type RuntimeProviderName = "groq" | "openrouter" | "tavily" | "exa";
 export type ProviderRuntimeStatus = "available" | "cooling_down" | "quota_exceeded" | "disabled";
+
+export type AIErrorType =
+  | "payload_too_large_before_request"
+  | "provider_quota_exceeded"
+  | "provider_rate_limited"
+  | "provider_timeout"
+  | "provider_network_error"
+  | "provider_auth_error"
+  | "model_not_found"
+  | "invalid_response"
+  | "fallback_success"
+  | "unknown";
+
+export type AIResultPersistenceStatus = {
+  savedToCache: boolean;
+  savedToStore: boolean;
+  savedToLocalStorage: boolean;
+  visibleDataUpdated: boolean;
+  uiRefreshTriggered: boolean;
+};
+
+export type AIChunkResult = {
+  chunkId: string;
+  status: "success" | "fallback" | "failed";
+  providerUsed: "groq" | "openrouter" | "internal-fallback";
+  outputSaved: boolean;
+  error?: string | null;
+};
 
 export type AIProviderRuntimeState = {
   provider: RuntimeProviderName;
@@ -56,10 +84,22 @@ export type AIAnalysisLog = {
   httpStatus?: number | null;
   retryCount?: number;
   payloadBytes?: number | null;
+  originalPayloadBytes?: number | null;
+  compactPayloadBytes?: number | null;
+  chunkCount?: number;
+  providerUsed?: AIProviderName | "internal-fallback" | null;
+  openRouterAttempted?: boolean;
+  internalFallbackUsed?: boolean;
+  resultSaved?: boolean;
+  visibleDataUpdated?: boolean;
+  errorType?: AIErrorType;
+  finalStatusLabel?: string;
+  chunkResults?: AIChunkResult[];
   fallbackUsed?: boolean;
   timeout?: boolean;
   fallbackResultSaved?: boolean;
   screenReflectionStatus?: "저장됨" | "fallback 저장됨" | "아직 없음";
+  persistence?: AIResultPersistenceStatus;
   rawText?: string | null;
 };
 

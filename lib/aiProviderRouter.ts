@@ -1,5 +1,5 @@
 import { isRuntimeProviderUsable, recordProviderFailure, recordProviderSuccess } from "@/lib/providerRuntimeState";
-import type { AIProviderName } from "@/types/ai";
+import type { AIErrorType, AIProviderName } from "@/types/ai";
 
 type ChatProvider = "groq" | "openrouter";
 
@@ -14,6 +14,7 @@ export type AITextResult =
       fallbackUsed: boolean;
       retryCount: number;
       timeout: false;
+      errorType?: null;
     }
   | {
       ok: false;
@@ -25,6 +26,7 @@ export type AITextResult =
       fallbackUsed: boolean;
       retryCount: number;
       timeout: boolean;
+      errorType: AIErrorType;
     };
 
 const systemPrompt = [
@@ -40,7 +42,7 @@ function envNumber(name: string, fallback: number) {
   return Number.isFinite(value) && value >= 1_000 ? value : fallback;
 }
 
-function getMaxPayloadBytes() {
+export function getMaxAIPayloadBytes() {
   const value = Number(process.env.AI_MAX_PAYLOAD_BYTES);
   return Number.isFinite(value) && value > 0 ? value : 30_000;
 }
@@ -94,6 +96,10 @@ function payloadSize(model: string, prompt: string) {
   return new TextEncoder().encode(buildBody(model, prompt)).length;
 }
 
+export function estimateAITextPayloadBytes(prompt: string, provider: ChatProvider = "groq") {
+  return payloadSize(provider === "groq" ? getPrimaryAIModel() : getFallbackAIModel(), prompt);
+}
+
 function extractText(data: unknown) {
   const choice = (data as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0];
   const content = choice?.message?.content;
@@ -115,7 +121,8 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       payloadBytes,
       fallbackUsed: provider !== "groq",
       retryCount,
-      timeout: false
+      timeout: false,
+      errorType: "provider_auth_error"
     };
   }
 
@@ -129,7 +136,8 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       payloadBytes,
       fallbackUsed: provider !== "groq",
       retryCount,
-      timeout: false
+      timeout: false,
+      errorType: "provider_rate_limited"
     };
   }
 
@@ -161,7 +169,15 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
         payloadBytes,
         fallbackUsed: provider !== "groq",
         retryCount,
-        timeout: false
+        timeout: false,
+        errorType:
+          response.status === 401 || response.status === 403
+            ? "provider_auth_error"
+            : response.status === 404
+              ? "model_not_found"
+              : response.status === 429
+                ? "provider_rate_limited"
+                : "provider_network_error"
       };
     }
 
@@ -177,7 +193,8 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       payloadBytes,
       fallbackUsed: provider !== "groq",
       retryCount,
-      timeout: false
+      timeout: false,
+      errorType: null
     };
   } catch (error) {
     const timeoutError = error instanceof Error && error.name === "AbortError";
@@ -196,7 +213,8 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       payloadBytes,
       fallbackUsed: provider !== "groq",
       retryCount,
-      timeout: timeoutError
+      timeout: timeoutError,
+      errorType: timeoutError ? "provider_timeout" : "provider_network_error"
     };
   } finally {
     clearTimeout(timeout);
@@ -205,17 +223,18 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
 
 export async function generateAIText(prompt: string): Promise<AITextResult> {
   const estimatedPayloadBytes = payloadSize(getPrimaryAIModel(), prompt);
-  if (estimatedPayloadBytes > getMaxPayloadBytes()) {
+  if (estimatedPayloadBytes > getMaxAIPayloadBytes()) {
     return {
       ok: false,
       provider: "rule-based",
       model: null,
-      message: `AI payload가 ${estimatedPayloadBytes} bytes로 제한(${getMaxPayloadBytes()} bytes)을 초과해 API 호출 없이 규칙 기반 fallback을 사용합니다.`,
+      message: `AI payload가 ${estimatedPayloadBytes} bytes로 제한(${getMaxAIPayloadBytes()} bytes)을 초과해 API 호출 없이 규칙 기반 fallback을 사용합니다.`,
       httpStatus: null,
       payloadBytes: estimatedPayloadBytes,
       fallbackUsed: true,
       retryCount: 0,
-      timeout: false
+      timeout: false,
+      errorType: "payload_too_large_before_request"
     };
   }
 
@@ -229,7 +248,8 @@ export async function generateAIText(prompt: string): Promise<AITextResult> {
       payloadBytes: estimatedPayloadBytes,
       fallbackUsed: true,
       retryCount: 0,
-      timeout: false
+      timeout: false,
+      errorType: "unknown"
     };
   }
 
@@ -248,6 +268,7 @@ export async function generateAIText(prompt: string): Promise<AITextResult> {
     payloadBytes: Math.max(openRouter.payloadBytes, groq.payloadBytes),
     fallbackUsed: true,
     retryCount: 1,
-    timeout: groq.timeout || openRouter.timeout
+    timeout: groq.timeout || openRouter.timeout,
+    errorType: openRouter.errorType ?? groq.errorType ?? "unknown"
   };
 }
