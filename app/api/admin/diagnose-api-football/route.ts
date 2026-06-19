@@ -321,7 +321,7 @@ function skippedDetailCall(endpoint: string, path: string, reason: string, seaso
     error: reason,
     fallbackReason: reason,
     replacementStrategy:
-      "API-Football fixtureId가 없으면 해당 세부 endpoint를 호출하지 않고, football-data.org 실제 결과와 정적 카드/징계 안내, 체력 내부 계산, Gemini/fallback 설명을 사용합니다.",
+      "API-Football fixtureId가 없으면 해당 세부 endpoint를 호출하지 않고, football-data.org 실제 결과와 정적 카드/징계 안내, 체력 내부 계산, AI/fallback 설명을 사용합니다.",
     sample: [],
     startedAt: timestamp,
     finishedAt: timestamp
@@ -344,7 +344,7 @@ function skippedSeasonLimitedCall(endpoint: string, path: string, reason: string
     error: reason,
     fallbackReason: reason,
     replacementStrategy:
-      "API-Football 2026 시즌 접근 제한이 확인되어 이 endpoint는 반복 호출하지 않습니다. football-data.org, 캐시, 정적 공식 대진, Gemini 최신 정보 fallback으로 전환합니다.",
+      "API-Football 2026 시즌 접근 제한이 확인되어 이 endpoint는 반복 호출하지 않습니다. football-data.org, 캐시, 정적 공식 대진, AI 최신 정보 fallback으로 전환합니다.",
     sample: [],
     startedAt: timestamp,
     finishedAt: timestamp
@@ -391,7 +391,7 @@ function createFallbackStrategy(params: {
     cardsFallback:
       "API-Football 2026 events가 불가능하면 football-data.org 제공 범위를 확인하고, 없으면 정적 카드 확인 대상과 공식 경기 보고서 확인 안내를 표시합니다. 없는 카드 기록을 만들지 않습니다.",
     injuriesFallback:
-      "API-Football 2026 injuries가 불가능하면 최신 부상은 공식 데이터 미제공으로 표시하고, 정적/관리자 입력 공간과 Gemini 설명 보강으로 빈 화면을 막습니다.",
+      "API-Football 2026 injuries가 불가능하면 최신 부상은 공식 데이터 미제공으로 표시하고, 정적/관리자 입력 공간과 AI 설명 보강으로 빈 화면을 막습니다.",
     disciplineFallback:
       "공식 카드 이벤트가 없으면 확정 징계를 단정하지 않고, 레드카드/경고 누적 위험 구조와 공식 보고서 확인 필요 상태를 표시합니다.",
     fitnessFallback:

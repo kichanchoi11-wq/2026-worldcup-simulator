@@ -1109,7 +1109,7 @@ export function createFullTournamentPrediction(groups: TeamGroup[] = getBaseGrou
       "경기별 확정 선발, 부상, 징계, 카드 현황은 경기 전 공식 발표로 재확인해야 합니다.",
       "일정·경기장·휴식일이 모두 채워지면 피로도와 이동 변수를 추가 보정할 수 있습니다.",
       ...(dataInputs?.diagnostics.fallbackExplanations ?? []),
-      "Gemini/API 키가 없어도 내부 규칙 모델로 실행되며, 외부 API 오류가 예측 탭을 비우지 않습니다."
+      "AI/API 키가 없어도 내부 규칙 모델로 실행되며, 외부 API 오류가 예측 탭을 비우지 않습니다."
     ]
   };
 }

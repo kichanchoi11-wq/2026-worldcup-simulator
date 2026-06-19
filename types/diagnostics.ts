@@ -1,4 +1,4 @@
-import type { GeminiProviderStatus } from "@/types/gemini";
+import type { AIProviderStatus } from "@/types/ai";
 import type { ApiFootballSeasonAccessStatus } from "@/types/football";
 
 export type DiagnosticStatus = "success" | "partial" | "failed" | "skipped";
@@ -93,7 +93,7 @@ export type ApiFootballDiagnosis = {
   testedAt: string;
 };
 
-export type GeminiDiagnosis = {
+export type AIDiagnosis = {
   ok: boolean;
   keyConfigured: boolean;
   modelSelection: string;
@@ -108,7 +108,7 @@ export type GeminiDiagnosis = {
     startedAt: string;
     finishedAt: string;
   } | null;
-  providerStatus: GeminiProviderStatus;
+  providerStatus: AIProviderStatus;
   diagnosis: string[];
   testedAt: string;
 };

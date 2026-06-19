@@ -6,7 +6,7 @@ import AdminRecollectionPanel from "@/components/AdminRecollectionPanel";
 import Badge from "@/components/Badge";
 import DataPipelineDiagnosticsPanel from "@/components/DataPipelineDiagnosticsPanel";
 import FootballDataRefreshPanel from "@/components/FootballDataRefreshPanel";
-import GeminiFreshInfoStatusPanel from "@/components/GeminiFreshInfoStatusPanel";
+import AIFreshInfoStatusPanel from "@/components/AIFreshInfoStatusPanel";
 import { createMatchPageData, matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
 import { createMatchReview, isFinishedMatch } from "@/lib/matchReviewService";
@@ -73,7 +73,7 @@ export default function AdminReviewPanel() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [teamRefreshMessage, setTeamRefreshMessage] = useState<string | null>(null);
   const [adminToolMessage, setAdminToolMessage] = useState<string | null>(null);
-  const [geminiReviewMessage, setGeminiReviewMessage] = useState<string | null>(null);
+  const [aiReviewMessage, setAIReviewMessage] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState<ManualGroupEntry>(emptyManualEntry);
   const [storageSnapshot, setStorageSnapshot] = useState<AdminStorageSnapshot>(emptyStorageSnapshot);
 
@@ -216,18 +216,18 @@ export default function AdminReviewPanel() {
     );
   }
 
-  async function regenerateGeminiReview() {
+  async function regenerateAIReview() {
     const candidate = reviewCandidates[0];
 
     if (!candidate) {
-      setGeminiReviewMessage("종료 경기 또는 실제 스코어가 없어 Gemini 리뷰 재생성 대상이 없습니다.");
+      setAIReviewMessage("종료 경기 또는 실제 스코어가 없어 AI 리뷰 재생성 대상이 없습니다.");
       return;
     }
 
-    setGeminiReviewMessage("Gemini 경기 리뷰를 서버 Route에서 생성하는 중입니다.");
+    setAIReviewMessage("AI 경기 리뷰를 서버 Route에서 생성하는 중입니다.");
 
     try {
-      const response = await fetch("/api/gemini/match-review", {
+      const response = await fetch("/api/ai/match-review", {
         method: "POST",
         credentials: "same-origin",
         headers: {
@@ -237,18 +237,18 @@ export default function AdminReviewPanel() {
       });
       const payload = (await response.json()) as {
         ok?: boolean;
-        usedGemini?: boolean;
+        usedAI?: boolean;
         message?: string;
         review?: { metadata?: { generatedBy?: string; model?: string | null; generatedAt?: string } } | null;
       };
 
-      setGeminiReviewMessage(
+      setAIReviewMessage(
         payload.ok
-          ? `${payload.message ?? "리뷰 생성 완료"} 생성 방식: ${payload.review?.metadata?.generatedBy ?? (payload.usedGemini ? "gemini" : "fallback")} / 모델: ${payload.review?.metadata?.model ?? "내부 규칙"}`
-          : payload.message ?? "Gemini 리뷰 생성에 실패했습니다."
+          ? `${payload.message ?? "리뷰 생성 완료"} 생성 방식: ${payload.review?.metadata?.generatedBy ?? (payload.usedAI ? "ai" : "fallback")} / 모델: ${payload.review?.metadata?.model ?? "내부 규칙"}`
+          : payload.message ?? "AI 리뷰 생성에 실패했습니다."
       );
     } catch {
-      setGeminiReviewMessage("Gemini 리뷰 API 호출에 실패했습니다. 기존 리뷰와 저장 데이터는 유지합니다.");
+      setAIReviewMessage("AI 리뷰 API 호출에 실패했습니다. 기존 리뷰와 저장 데이터는 유지합니다.");
     }
   }
 
@@ -397,7 +397,7 @@ export default function AdminReviewPanel() {
         </div>
         <div className="mt-4 space-y-4">
           <DataPipelineDiagnosticsPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
-          <GeminiFreshInfoStatusPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
+          <AIFreshInfoStatusPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
           <AdminRecollectionPanel onSnapshotChange={() => setVersion((current) => current + 1)} />
         </div>
       </section>
@@ -422,8 +422,8 @@ export default function AdminReviewPanel() {
             <button type="button" onClick={runStaleDataCleanupCheck} className="rounded border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-sm font-black text-white">
               오래된 데이터 정리 점검
             </button>
-            <button type="button" onClick={regenerateGeminiReview} className="rounded border border-violet-300/50 bg-violet-400/15 px-3 py-2 text-sm font-black text-white">
-              Gemini 경기 리뷰 재생성
+            <button type="button" onClick={regenerateAIReview} className="rounded border border-violet-300/50 bg-violet-400/15 px-3 py-2 text-sm font-black text-white">
+              AI 경기 리뷰 재생성
             </button>
           </div>
         </div>
@@ -445,7 +445,7 @@ export default function AdminReviewPanel() {
           <DebugItem label="치명 결측" value={`${matchDataAudit.criticalGaps}건`} />
         </div>
         {adminToolMessage ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm text-white/75">{adminToolMessage}</p> : null}
-        {geminiReviewMessage ? <p className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-3 text-sm text-violet-50/80">{geminiReviewMessage}</p> : null}
+        {aiReviewMessage ? <p className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-3 text-sm text-violet-50/80">{aiReviewMessage}</p> : null}
         {brokenNameAudit.length > 0 ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {brokenNameAudit.slice(0, 6).map((item) => (

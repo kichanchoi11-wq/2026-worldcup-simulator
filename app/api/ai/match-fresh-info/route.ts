@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createAdminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
-import { createMatchFreshInfo, getGeminiFreshInfoStatus } from "@/lib/geminiFreshInfoService";
+import { createMatchFreshInfo, getAIFreshInfoStatus } from "@/lib/aiFreshInfoService";
 import type { FootballMatch } from "@/types/football";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     }
 
     const result = await createMatchFreshInfo(body.matchId, Array.isArray(body.matches) ? body.matches as FootballMatch[] : []);
-    const status = getGeminiFreshInfoStatus(result ? [result] : []);
+    const status = getAIFreshInfoStatus(result ? [result] : []);
 
     return NextResponse.json({ ok: Boolean(result), data: result, status }, { status: result ? 200 : 404 });
   } catch (error) {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Badge from "@/components/Badge";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/storage";
-import type { GeminiProviderStatus } from "@/types/gemini";
+import type { AIProviderStatus } from "@/types/ai";
 import type { RecollectionDataPayload, RecollectionJob, RecollectionJobStatus, RecollectionResponse, RecollectionScope } from "@/types/recollection";
 import { recollectionJobDefinitions } from "@/types/recollection";
 
@@ -83,8 +83,8 @@ function compactRefreshSnapshot(data: RecollectionDataPayload): RecollectionData
       cardRecords: data.cardRecords,
       freshInfoResults: data.freshInfoResults,
       freshInfoStatus: data.freshInfoStatus,
-      geminiAnalyses: data.geminiAnalyses,
-      geminiStatus: data.geminiStatus,
+      aiAnalyses: data.aiAnalyses,
+      aiStatus: data.aiStatus,
       providerStatus: data.providerStatus
     }
   };
@@ -115,10 +115,10 @@ function persistRecollectionPayload(data: RecollectionDataPayload) {
   writeIfAny(storageKeys.teamRiskProfilesData, data.teamRiskProfiles);
   writeIfAny(storageKeys.koreaVsTeamPredictionsData, data.koreaPredictions);
   writeIfAny(storageKeys.matchReviewsData, data.matchReviews);
-  writeIfAny(storageKeys.geminiFreshInfoData, data.freshInfoResults);
-  safeWriteStorage(storageKeys.geminiFreshInfoStatusData, data.freshInfoStatus);
-  writeIfAny(storageKeys.geminiAnalysesData, data.geminiAnalyses);
-  safeWriteStorage(storageKeys.geminiStatusData, data.geminiStatus);
+  writeIfAny(storageKeys.aiFreshInfoData, data.freshInfoResults);
+  safeWriteStorage(storageKeys.aiFreshInfoStatusData, data.freshInfoStatus);
+  writeIfAny(storageKeys.aiAnalysesData, data.aiAnalyses);
+  safeWriteStorage(storageKeys.aiStatusData, data.aiStatus);
 }
 
 function createRunningJob(scope: RecollectionScope, label: string): RecollectionJob {
@@ -185,7 +185,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
   const [jobs, setJobs] = useState<RecollectionJob[]>([]);
   const [message, setMessage] = useState<string | null>(null);
-  const [geminiStatus, setGeminiStatus] = useState<GeminiProviderStatus | null>(null);
+  const [aiStatus, setAIStatus] = useState<AIProviderStatus | null>(null);
   const { isAdminAuthenticated, isChecking } = useAdminAuth();
   const latestByScope = useMemo(() => new Map(jobs.map((job) => [job.scope, job])), [jobs]);
 
@@ -197,7 +197,7 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
         safeWriteStorage(storageKeys.adminRecollectionJobsData, cleaned.jobs);
       }
       setJobs(cleaned.jobs);
-      setGeminiStatus(readStorage<GeminiProviderStatus | null>(storageKeys.geminiStatusData, null));
+      setAIStatus(readStorage<AIProviderStatus | null>(storageKeys.aiStatusData, null));
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -236,7 +236,7 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
       }
 
       persistRecollectionPayload(payload.data);
-      setGeminiStatus(payload.data.geminiStatus);
+      setAIStatus(payload.data.aiStatus);
       safeWriteStorage(storageKeys.adminRecollectionLastData, {
         ok: payload.ok,
         status: payload.status,
@@ -279,7 +279,7 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
           </div>
           <h3 className="mt-3 font-black text-white">관리자 재검증 실행</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-cyan-50/75">
-            각 버튼은 서버 Route에서 API-Football, football-data.org, 캐시, 정적 fallback, 가능한 경우 Gemini 리뷰를 순서대로 사용합니다.
+            각 버튼은 서버 Route에서 API-Football, football-data.org, 캐시, 정적 fallback, 가능한 경우 AI 리뷰를 순서대로 사용합니다.
             성공한 결과는 팀 정보, 경기 상세, 리뷰 화면이 읽는 저장소에 바로 반영됩니다.
           </p>
         </div>
@@ -301,24 +301,24 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
 
       {message ? <p className="mt-4 rounded border border-white/10 bg-white/8 p-3 text-sm font-semibold text-white/80">{message}</p> : null}
 
-      {geminiStatus ? (
+      {aiStatus ? (
         <div className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={geminiStatus.enabled ? "success" : "warning"}>Gemini API {geminiStatus.enabled ? "사용 가능" : "fallback"}</Badge>
-            <Badge tone="neutral">모델 {geminiStatus.model}</Badge>
-            <Badge tone="neutral">Fallback {geminiStatus.fallbackModel}</Badge>
+            <Badge tone={aiStatus.enabled ? "success" : "warning"}>AI API {aiStatus.enabled ? "사용 가능" : "fallback"}</Badge>
+            <Badge tone="neutral">모델 {aiStatus.model}</Badge>
+            <Badge tone="neutral">Fallback {aiStatus.fallbackModel}</Badge>
           </div>
           <div className="mt-3 grid gap-2 text-sm text-violet-50/80 md:grid-cols-4">
-            <span>호출 {geminiStatus.callCount}회</span>
-            <span>캐시 {geminiStatus.cacheHitCount}건</span>
-            <span>실패 {geminiStatus.failureCount}건</span>
-            <span>마지막 호출 {formatDate(geminiStatus.lastCallAt)}</span>
+            <span>호출 {aiStatus.callCount}회</span>
+            <span>캐시 {aiStatus.cacheHitCount}건</span>
+            <span>실패 {aiStatus.failureCount}건</span>
+            <span>마지막 호출 {formatDate(aiStatus.lastCallAt)}</span>
           </div>
-          <p className="mt-3 text-sm leading-6 text-violet-50/75">{geminiStatus.modelSelectionMessage}</p>
-          <p className="mt-1 text-sm leading-6 text-violet-50/65">{geminiStatus.message}</p>
-          {geminiStatus.logs.length > 0 ? (
+          <p className="mt-3 text-sm leading-6 text-violet-50/75">{aiStatus.modelSelectionMessage}</p>
+          <p className="mt-1 text-sm leading-6 text-violet-50/65">{aiStatus.message}</p>
+          {aiStatus.logs.length > 0 ? (
             <ul className="mt-3 grid gap-2 text-xs text-violet-50/70 md:grid-cols-2">
-              {geminiStatus.logs.slice(0, 4).map((log) => (
+              {aiStatus.logs.slice(0, 4).map((log) => (
                 <li key={log.id} className="rounded border border-white/10 bg-pitch-900/70 p-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={log.status === "success" || log.status === "cache" ? "success" : log.status === "fallback" ? "warning" : "danger"}>
@@ -328,10 +328,10 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
                   </div>
                   <p className="mt-2">{log.message}</p>
                   <p className="mt-1 text-violet-50/45">
-                    모델 {log.model ?? geminiStatus.model} · fallback {geminiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
+                    모델 {log.model ?? aiStatus.model} · fallback {aiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
                   </p>
                   <p className="mt-1 text-violet-50/45">
-                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || geminiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? geminiStatus.screenReflectionStatus} · {formatDate(log.createdAt)}
+                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || aiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? aiStatus.screenReflectionStatus} · {formatDate(log.createdAt)}
                   </p>
                 </li>
               ))}

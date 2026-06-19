@@ -134,7 +134,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={review ? "success" : "warning"}>{review ? "경기 리뷰" : "경기 전 프리뷰"}</Badge>
           <Badge tone="분석 참고">AI 예측과 실제 결과 분리</Badge>
-          {review ? <Badge tone={review.reviewType === "gemini" ? "AI 예측" : "분석 참고"}>{review.reviewType === "gemini" ? "Gemini 생성" : "규칙 기반 리뷰"}</Badge> : null}
+          {review ? <Badge tone={review.reviewType === "ai" ? "AI 예측" : "분석 참고"}>{review.reviewType === "ai" ? "AI 생성" : "규칙 기반 리뷰"}</Badge> : null}
         </div>
         <h2 className="mt-3 text-xl font-black text-white">{review ? "끝난 경기 리뷰" : reviewPlaceholder.title}</h2>
         {review ? (

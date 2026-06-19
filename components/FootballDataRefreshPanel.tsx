@@ -91,8 +91,8 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     const cardRecords = asArray(data?.cardRecords);
     const freshInfoResults = asArray(data?.freshInfoResults);
     const freshInfoStatus = data?.freshInfoStatus;
-    const geminiAnalyses = asArray(data?.geminiAnalyses);
-    const geminiStatus = data?.geminiStatus;
+    const aiAnalyses = asArray(data?.aiAnalyses);
+    const aiStatus = data?.aiStatus;
     const providerStatus = data?.providerStatus;
 
     writeStorage(storageKeys.footballRefreshSnapshotData, nextSnapshot);
@@ -119,7 +119,7 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
     writeStorage(storageKeys.apiFootballInjuriesData, asArray(fallbackResources?.injuries));
     writeStorage(storageKeys.apiFootballStatisticsData, asArray(fallbackResources?.statistics));
     writeStorage(storageKeys.apiFootballPredictionsData, asArray(fallbackResources?.predictions));
-    writeStorage(storageKeys.geminiFreshInfoData, freshInfoResults);
+    writeStorage(storageKeys.aiFreshInfoData, freshInfoResults);
 
     if (providerStatus) {
       writeStorage(storageKeys.apiFootballProviderStatusData, providerStatus);
@@ -127,14 +127,14 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
       writeStorage(storageKeys.apiFootballSyncLogsData, asArray(providerStatus.syncLogs));
     }
 
-    writeStorage(storageKeys.geminiAnalysesData, geminiAnalyses);
+    writeStorage(storageKeys.aiAnalysesData, aiAnalyses);
 
-    if (geminiStatus) {
-      writeStorage(storageKeys.geminiStatusData, geminiStatus);
+    if (aiStatus) {
+      writeStorage(storageKeys.aiStatusData, aiStatus);
     }
 
     if (freshInfoStatus) {
-      writeStorage(storageKeys.geminiFreshInfoStatusData, freshInfoStatus);
+      writeStorage(storageKeys.aiFreshInfoStatusData, freshInfoStatus);
     }
 
     writeStorage(
@@ -203,8 +203,8 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
   const cardRecordCount = asArray(data?.cardRecords).length;
   const freshInfoCount = asArray(data?.freshInfoResults).length;
   const freshInfoStatus = data?.freshInfoStatus;
-  const geminiAnalysisCount = asArray(data?.geminiAnalyses).length;
-  const geminiStatus = data?.geminiStatus;
+  const aiAnalysisCount = asArray(data?.aiAnalyses).length;
+  const aiStatus = data?.aiStatus;
   const results = asArray(snapshot?.results);
   const showRefreshButton = size === "full" && isAdminAuthenticated;
   const showAdminNotice = size === "full" && !isAdminAuthenticated;
@@ -251,28 +251,28 @@ export default function FootballDataRefreshPanel({ size = "full" }: { size?: Pan
         <Status label="리소스 저장 구조" value={`${resourceSnapshotCount}종`} />
         <Status label="경기 리뷰" value={`${matchReviewCount}개`} />
         <Status label="카드 현황 레코드" value={`${cardRecordCount}건`} />
-        <Status label="Gemini 최신 정보" value={`${freshInfoCount}건`} />
+        <Status label="AI 최신 정보" value={`${freshInfoCount}건`} />
         <Status label="출처 기반 항목" value={freshInfoStatus ? `${freshInfoStatus.sourceBackedItemCount}건` : "아직 없음"} />
         <Status label="추가 확인 필요" value={freshInfoStatus ? `${freshInfoStatus.needsReviewCount}건` : "아직 없음"} />
         <Status
-          label="Gemini 분석"
+          label="AI 분석"
           value={
-            geminiStatus
-              ? `${geminiAnalysisCount}건 · 호출 ${geminiStatus.callCount}회 · 캐시 ${geminiStatus.cacheHitCount}건`
+            aiStatus
+              ? `${aiAnalysisCount}건 · 호출 ${aiStatus.callCount}회 · 캐시 ${aiStatus.cacheHitCount}건`
               : "아직 없음"
           }
         />
       </div>
 
-      {geminiStatus ? (
+      {aiStatus ? (
         <p className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-3 text-sm font-semibold text-violet-50">
-          {geminiStatus.message}
+          {aiStatus.message}
         </p>
       ) : null}
 
       {freshInfoStatus ? (
         <div className="mt-4 rounded border border-emerald-300/25 bg-emerald-400/10 p-3 text-sm text-emerald-50">
-          <p className="font-black">Gemini 최신 정보 검색 상태</p>
+          <p className="font-black">AI 최신 정보 검색 상태</p>
           <p className="mt-1 font-semibold">{freshInfoStatus.message}</p>
           <p className="mt-2 text-emerald-50/80">
             마지막 검색: {formatDate(freshInfoStatus.lastSearchedAt)} · 경기 {freshInfoStatus.targetMatchCount}건 · 팀{" "}

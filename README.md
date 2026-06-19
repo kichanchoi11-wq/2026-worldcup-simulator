@@ -33,16 +33,28 @@ API_FOOTBALL_LEAGUE_ID=1
 API_FOOTBALL_SEASON=2026
 FOOTBALL_DATA_ORG_KEY=
 FOOTBALL_DATA_API_KEY=
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
-GEMINI_FALLBACK_MODEL=gemini-2.5-flash
-GEMINI_TIMEOUT_MS=30000
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_TIMEOUT_MS=15000
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=meta-llama/llama-3.2-3b-instruct:free
+OPENROUTER_TIMEOUT_MS=15000
+AI_MAX_PAYLOAD_BYTES=30000
+PROVIDER_COOLDOWN_MINUTES=30
+TAVILY_API_KEY=
+EXA_API_KEY=
+LATEST_INFO_PROVIDER_PRIORITY=tavily,exa
+LATEST_INFO_SEARCH_TIMEOUT_MS=12000
+LATEST_INFO_CACHE_TTL_HOURS=6
+LATEST_INFO_MATCH_LIMIT=4
 ADMIN_PASSWORD=091009
 CRON_SECRET=
 ```
 
 `API_FOOTBALL_KEY`는 API-Football(API-SPORTS) 서버 Route에서만 사용합니다. 브라우저에서 직접 외부 API를 호출하지 않으며, 무료 플랜 보호를 위해 기본 하루 100회 제한과 95회 soft limit을 적용합니다.
 `FOOTBALL_DATA_ORG_KEY` 또는 기존 호환 이름 `FOOTBALL_DATA_API_KEY`는 API-Football 실패 시 fallback 용도로만 사용합니다. 두 키가 모두 없어도 저장 캐시와 정적 기본 데이터로 앱은 중단되지 않습니다.
+`GROQ_API_KEY`는 경기 예측, 전술 요약, 핵심 선수 분석, 한국어 설명 생성의 1순위 AI Provider입니다. Groq가 실패하거나 429/quota/timeout이면 `OPENROUTER_API_KEY`로 한 번만 fallback하고, 둘 다 실패하면 캐시 또는 규칙 기반 분석을 사용합니다.
+`TAVILY_API_KEY`와 `EXA_API_KEY`는 최신 부상, 카드, 체력, 라인업, 뉴스, 감독/전술 변화 검색용입니다. 최신 사실은 검색/API/저장 JSON 출처가 있을 때만 화면에 반영합니다.
 
 ## 관리자 인증
 

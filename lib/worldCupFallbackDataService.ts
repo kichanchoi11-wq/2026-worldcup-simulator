@@ -1,7 +1,7 @@
 import { createMatchPageData, matchDetails } from "@/data/matchDetails";
 import { teamVerificationData } from "@/data/teamVerificationData";
 import type { FootballMatch } from "@/types/football";
-import type { FreshInfoItem, FreshInfoNeed, FreshInfoSource, GeminiFreshInfoRequest, GeminiFreshInfoResult } from "@/types/freshInfo";
+import type { FreshInfoItem, FreshInfoNeed, FreshInfoSource, AIFreshInfoRequest, AIFreshInfoResult } from "@/types/freshInfo";
 
 const needCategory: Record<FreshInfoNeed, FreshInfoItem["category"]> = {
   actualResult: "경기 결과",
@@ -22,7 +22,7 @@ function displayName(value: string | null | undefined, fallback: string) {
   return value && value.trim().length > 0 ? value : fallback;
 }
 
-export function buildMatchFreshInfoRequest(matchId: string, apiMatches: FootballMatch[] = []): GeminiFreshInfoRequest | null {
+export function buildMatchFreshInfoRequest(matchId: string, apiMatches: FootballMatch[] = []): AIFreshInfoRequest | null {
   const match = matchDetails.find((item) => String(item.matchId) === String(matchId));
 
   if (!match) {
@@ -61,7 +61,7 @@ export function buildMatchFreshInfoRequest(matchId: string, apiMatches: Football
   };
 }
 
-export function buildTeamFreshInfoRequest(teamId: string): GeminiFreshInfoRequest | null {
+export function buildTeamFreshInfoRequest(teamId: string): AIFreshInfoRequest | null {
   const team = teamVerificationData.find((item) => item.teamId === teamId);
 
   if (!team) {
@@ -89,7 +89,7 @@ export function buildTeamFreshInfoRequest(teamId: string): GeminiFreshInfoReques
   };
 }
 
-export function createFallbackFreshInfoResult(request: GeminiFreshInfoRequest, reason: string): GeminiFreshInfoResult {
+export function createFallbackFreshInfoResult(request: AIFreshInfoRequest, reason: string): AIFreshInfoResult {
   const now = new Date().toISOString();
   const sources = fallbackSources(request, now);
   const items = request.infoNeeds.map((need) => fallbackItem(request, need, now, sources));
@@ -101,12 +101,12 @@ export function createFallbackFreshInfoResult(request: GeminiFreshInfoRequest, r
     generatedAt: now,
     searchedAt: now,
     searchUsed: false,
-    modelUsed: null,
+    providerUsed: "none",
     items,
     summary: `${request.matchName ?? request.teamNames?.join(", ") ?? request.targetId} 최신 정보는 확인 가능한 2026 fallback 데이터와 내부 계산으로 표시합니다.`,
     limitations: [
       reason,
-      "Gemini 검색 grounding이 없거나 출처가 부족한 항목은 확정 정보로 표시하지 않습니다.",
+      "Tavily/Exa 검색 출처가 없거나 부족한 항목은 확정 정보로 표시하지 않습니다.",
       "카드, 부상, 징계, 실제 라인업은 공식 경기 보고서나 팀 공식 발표가 확인되면 관리자 입력 또는 다음 새로고침으로 교체해야 합니다."
     ],
     sources,
@@ -116,7 +116,7 @@ export function createFallbackFreshInfoResult(request: GeminiFreshInfoRequest, r
   };
 }
 
-function fallbackSources(request: GeminiFreshInfoRequest, checkedAt: string): FreshInfoSource[] {
+function fallbackSources(request: AIFreshInfoRequest, checkedAt: string): FreshInfoSource[] {
   const sources: FreshInfoSource[] = [
     {
       name: "2026 월드컵 정적 공식 대진 데이터",
@@ -146,7 +146,7 @@ function fallbackSources(request: GeminiFreshInfoRequest, checkedAt: string): Fr
   return sources;
 }
 
-function fallbackItem(request: GeminiFreshInfoRequest, need: FreshInfoNeed, checkedAt: string, sources: FreshInfoSource[]): FreshInfoItem {
+function fallbackItem(request: AIFreshInfoRequest, need: FreshInfoNeed, checkedAt: string, sources: FreshInfoSource[]): FreshInfoItem {
   const category = needCategory[need];
   const sourceNames = sources.map((source) => source.name);
   const titlePrefix = request.matchName ?? request.teamNames?.join(" / ") ?? request.targetId;

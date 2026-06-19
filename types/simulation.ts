@@ -220,6 +220,16 @@ export interface FullTournamentPrediction {
   modelVersion: string;
   confidence: PredictionDataConfidence;
   notice: string;
+  aiAnalysis?: {
+    status: "success" | "fallback" | "cache" | "failed";
+    provider: "groq" | "openrouter" | "cache" | "rule-based";
+    model: string | null;
+    summary: string;
+    bulletPoints: string[];
+    dataGaps: string[];
+    generatedAt: string;
+    message: string;
+  };
   refreshStatus: {
     stable: boolean;
     message: string;

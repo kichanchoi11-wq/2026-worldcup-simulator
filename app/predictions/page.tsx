@@ -26,7 +26,7 @@ export default function PredictionsPage() {
         <h1 className="mt-2 text-3xl font-black text-white">조별리그부터 결승까지 전체 AI 예측</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-white/65">
           공식 조 편성, 팀 상세 데이터, 선수 명단, 감독, 포메이션, 전술 특징, 브래킷 구조를 분리해 계산합니다.
-          Gemini/API 키가 없어도 내부 규칙 모델로 빈 화면 없이 실행됩니다.
+          AI/API 키가 없어도 내부 규칙 모델로 빈 화면 없이 실행됩니다.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge tone="AI 예측">AI 예측</Badge>

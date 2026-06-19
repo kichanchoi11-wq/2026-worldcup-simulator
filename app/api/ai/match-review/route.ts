@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createMatchPageData, getMatchDetailById } from "@/data/matchDetails";
 import { createAdminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
-import { createGeminiMatchReview } from "@/lib/geminiAnalysisService";
+import { createAIMatchReview } from "@/lib/aiAnalysisService";
 
 export async function POST(request: Request) {
   if (!isAdminRequest(request)) {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   const pageData = createMatchPageData(match);
-  const result = await createGeminiMatchReview(pageData);
+  const result = await createAIMatchReview(pageData);
 
   return NextResponse.json(result, { status: result.ok ? 200 : 409 });
 }

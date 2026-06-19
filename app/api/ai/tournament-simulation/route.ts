@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     source: "AI 시뮬레이션",
     lastSimulatedAt: new Date().toISOString(),
     notice:
-      "팀 상세 정보가 검증되지 않은 항목은 선수·감독·전술·포메이션 기반 예측에서 제외했습니다. 공식 3위 배정표가 없는 자리는 임의 확정하지 않습니다.",
+      "상세 정보가 검증되지 않은 항목은 선수·감독·전술·포메이션 기반 예측에서 제외했습니다. 공식 3위 배정표가 없는 자리는 임의 확정하지 않습니다.",
     validation,
     bracket
   });

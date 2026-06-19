@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Badge from "@/components/Badge";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
-import type { GeminiFreshInfoResult, GeminiFreshInfoStatus } from "@/types/freshInfo";
+import type { AIFreshInfoResult, AIFreshInfoStatus } from "@/types/freshInfo";
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -29,25 +29,25 @@ function asArray<T>(value: T[] | undefined): T[] {
 function persistSnapshot(snapshot: FootballDataRefreshSnapshot) {
   writeStorage(storageKeys.footballRefreshSnapshotData, snapshot);
   writeStorage(storageKeys.lastManualRefreshData, snapshot.refreshedAt);
-  writeStorage(storageKeys.geminiFreshInfoData, asArray(snapshot.data.freshInfoResults));
-  writeStorage(storageKeys.geminiFreshInfoStatusData, snapshot.data.freshInfoStatus);
+  writeStorage(storageKeys.aiFreshInfoData, asArray(snapshot.data.freshInfoResults));
+  writeStorage(storageKeys.aiFreshInfoStatusData, snapshot.data.freshInfoStatus);
   writeStorage(storageKeys.apiFootballProviderStatusData, snapshot.data.providerStatus);
   writeStorage(storageKeys.apiFootballResourceSnapshotsData, asArray(snapshot.data.resourceSnapshots));
   writeStorage(storageKeys.apiMatchesData, asArray(snapshot.data.matches));
   writeStorage(storageKeys.apiStandingsData, asArray(snapshot.data.standings));
 }
 
-export default function GeminiFreshInfoStatusPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
-  const [results, setResults] = useState<GeminiFreshInfoResult[]>([]);
-  const [status, setStatus] = useState<GeminiFreshInfoStatus | null>(null);
+export default function AIFreshInfoStatusPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
+  const [results, setResults] = useState<AIFreshInfoResult[]>([]);
+  const [status, setStatus] = useState<AIFreshInfoStatus | null>(null);
   const [providerStatus, setProviderStatus] = useState<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { isAdminAuthenticated, isChecking } = useAdminAuth();
 
   function loadStoredData() {
-    setResults(readArrayStorage<GeminiFreshInfoResult>(storageKeys.geminiFreshInfoData));
-    setStatus(readStorage<GeminiFreshInfoStatus | null>(storageKeys.geminiFreshInfoStatusData, null));
+    setResults(readArrayStorage<AIFreshInfoResult>(storageKeys.aiFreshInfoData));
+    setStatus(readStorage<AIFreshInfoStatus | null>(storageKeys.aiFreshInfoStatusData, null));
     setProviderStatus(readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null));
   }
 
@@ -56,17 +56,17 @@ export default function GeminiFreshInfoStatusPanel({ onSnapshotChange }: { onSna
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function refreshWithGemini() {
+  async function refreshWithAI() {
     if (!isAdminAuthenticated) {
-      setMessage("관리자 인증 후 Gemini 최신 정보 새로고침을 실행할 수 있습니다.");
+      setMessage("관리자 인증 후 최신 정보 새로고침을 실행할 수 있습니다.");
       return;
     }
 
     setLoading(true);
-    setMessage("서버 Route에서 2026 데이터 fallback과 Gemini 최신 정보 검색을 실행 중입니다.");
+    setMessage("서버 Route에서 2026 데이터 fallback과 Tavily/Exa 최신 정보 검색을 실행 중입니다.");
 
     try {
-      const response = await fetch("/api/admin/refresh-with-gemini", {
+      const response = await fetch("/api/admin/refresh-with-ai", {
         method: "POST",
         credentials: "same-origin"
       });
@@ -88,7 +88,7 @@ export default function GeminiFreshInfoStatusPanel({ onSnapshotChange }: { onSna
       setMessage(snapshot.message);
       onSnapshotChange?.();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gemini 최신 정보 새로고침에 실패했습니다.");
+      setMessage(error instanceof Error ? error.message : "최신 정보 새로고침에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -103,22 +103,22 @@ export default function GeminiFreshInfoStatusPanel({ onSnapshotChange }: { onSna
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap gap-2">
-            <Badge tone={status?.enabled ? "success" : "warning"}>Gemini API {status?.enabled ? "설정됨" : "미설정/fallback"}</Badge>
-            <Badge tone={status?.groundingEnabled ? "success" : "warning"}>검색 grounding {status?.groundingEnabled ? "시도" : "비활성"}</Badge>
+            <Badge tone={status?.enabled ? "success" : "warning"}>검색 API {status?.enabled ? "설정됨" : "미설정/fallback"}</Badge>
+            <Badge tone={status?.searchEnabled ? "success" : "warning"}>Tavily/Exa {status?.searchEnabled ? "사용 가능" : "비활성"}</Badge>
             <Badge tone={seasonAccess?.accessible === false ? "warning" : "neutral"}>API-Football 2026 {seasonAccess?.accessible === false ? "제한 감지" : "상태 확인"}</Badge>
           </div>
-          <h3 className="mt-3 font-black text-white">Gemini 최신 정보 검색 상태</h3>
+          <h3 className="mt-3 font-black text-white">최신 정보 검색 상태</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-50/75">
-            API-Football 무료 플랜에서 2026 시즌 접근이 제한되면 2026 엔드포인트 반복 호출을 멈추고, football-data.org/정적 공식 대진/내부 계산/Gemini 출처 기반 검색으로만 보강합니다. 과거 시즌 데이터는 반영하지 않습니다.
+            API-Football 무료 플랜에서 2026 시즌 접근이 제한되면 2026 엔드포인트 반복 호출을 멈추고, football-data.org/정적 공식 대진/내부 계산/Tavily·Exa 출처 기반 검색으로만 보강합니다. 과거 시즌 데이터는 반영하지 않습니다.
           </p>
         </div>
         <button
           type="button"
-          onClick={refreshWithGemini}
+          onClick={refreshWithAI}
           disabled={!isAdminAuthenticated || loading}
           className="rounded border border-trophy/60 bg-trophy/20 px-4 py-2 text-sm font-black text-white transition hover:bg-trophy/30 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "실행 중" : "Gemini 최신 정보 새로고침"}
+          {loading ? "실행 중" : "최신 정보 새로고침"}
         </button>
       </div>
 

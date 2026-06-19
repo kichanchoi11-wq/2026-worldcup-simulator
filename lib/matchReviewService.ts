@@ -133,7 +133,7 @@ export function createMatchReview(pageData: MatchPageData): MatchReview | null {
       home: match.score.home,
       away: match.score.away
     },
-    matchSummary: `${match.homeTeamName ?? "홈팀"} ${match.score.home}-${match.score.away} ${match.awayTeamName ?? "원정팀"} 결과를 기준으로 한 규칙 기반 리뷰입니다. Gemini 리뷰는 관리자 인증 후 서버 Route에서 생성할 수 있으며, 사실 데이터는 저장된 경기/팀/이벤트 구조만 사용합니다.`,
+    matchSummary: `${match.homeTeamName ?? "홈팀"} ${match.score.home}-${match.score.away} ${match.awayTeamName ?? "원정팀"} 결과를 기준으로 한 규칙 기반 리뷰입니다. AI 리뷰는 관리자 인증 후 서버 Route에서 생성할 수 있으며, 사실 데이터는 저장된 경기/팀/이벤트 구조만 사용합니다.`,
     keyMoments: [
       pageData.matchCardEvents.length > 0
         ? "저장된 이벤트 타임라인을 기준으로 승부처를 반영했습니다."

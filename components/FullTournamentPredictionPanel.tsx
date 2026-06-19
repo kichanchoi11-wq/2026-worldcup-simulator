@@ -291,7 +291,7 @@ function EmptyPredictionState() {
       <h2 className="mt-3 text-xl font-black text-white">아직 생성된 AI 예측이 없습니다</h2>
       <p className="mt-2 text-sm leading-6 text-white/65">
         위 버튼 중 하나를 누르면 내부 규칙 모델이 팀 상세 데이터와 공식 브래킷 구조를 사용해 결과를 생성합니다.
-        Gemini/API 키가 없어도 빈 화면 없이 작동합니다.
+        AI/API 키가 없어도 빈 화면 없이 작동합니다.
       </p>
     </section>
   );
@@ -387,6 +387,27 @@ function ModelNotice({ prediction }: { prediction: FullTournamentPrediction }) {
         <Badge tone="분석 참고">공식 결과 아님</Badge>
       </div>
       <p className="mt-3 text-sm leading-6 text-white/70">{prediction.notice}</p>
+      {prediction.aiAnalysis ? (
+        <div className="mt-4 rounded border border-violet-300/25 bg-violet-400/10 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={prediction.aiAnalysis.status === "success" || prediction.aiAnalysis.status === "cache" ? "success" : "warning"}>
+              {prediction.aiAnalysis.provider}
+            </Badge>
+            <Badge tone="neutral">{prediction.aiAnalysis.model ?? "rule-based"}</Badge>
+          </div>
+          <p className="mt-3 text-sm font-black text-white">{prediction.aiAnalysis.summary}</p>
+          {prediction.aiAnalysis.bulletPoints.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {prediction.aiAnalysis.bulletPoints.slice(0, 4).map((item) => (
+                <Badge key={item} tone="neutral">{item}</Badge>
+              ))}
+            </div>
+          ) : null}
+          {prediction.aiAnalysis.dataGaps.length > 0 ? (
+            <p className="mt-3 text-xs leading-5 text-amber-50/75">{prediction.aiAnalysis.dataGaps.slice(0, 3).join(" · ")}</p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {prediction.uncertaintyFactors.map((factor) => (
           <div key={factor} className="rounded border border-white/10 bg-pitch-900/70 p-3 text-sm leading-6 text-white/70">

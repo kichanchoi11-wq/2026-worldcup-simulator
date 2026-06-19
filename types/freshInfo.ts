@@ -32,13 +32,14 @@ export type FreshInfoSourceType =
   | "공식 발표"
   | "축구 데이터 사이트"
   | "스포츠 언론"
-  | "Gemini 검색"
+  | "Tavily 검색"
+  | "Exa 검색"
   | "football-data.org"
   | "정적 데이터"
   | "관리자 입력"
   | "내부 계산";
 
-export type GeminiFreshInfoRequest = {
+export type AIFreshInfoRequest = {
   targetType: "match" | "team" | "player" | "coach" | "group" | "tournament";
   targetId: string;
   teamNames?: string[];
@@ -68,14 +69,14 @@ export type FreshInfoItem = {
   lastCheckedAt: string;
 };
 
-export type GeminiFreshInfoResult = {
+export type AIFreshInfoResult = {
   ok: boolean;
   targetType: string;
   targetId: string;
   generatedAt: string;
   searchedAt: string;
   searchUsed: boolean;
-  modelUsed: string | null;
+  providerUsed: "tavily" | "exa" | "none" | null;
   items: FreshInfoItem[];
   summary: string;
   limitations: string[];
@@ -85,10 +86,11 @@ export type GeminiFreshInfoResult = {
   error?: string | null;
 };
 
-export type GeminiFreshInfoStatus = {
+export type AIFreshInfoStatus = {
   enabled: boolean;
-  groundingEnabled: boolean;
-  groundingAvailable: boolean;
+  searchEnabled: boolean;
+  searchAvailable: boolean;
+  searchProviders: Array<"tavily" | "exa">;
   lastSearchedAt: string | null;
   targetMatchCount: number;
   targetTeamCount: number;

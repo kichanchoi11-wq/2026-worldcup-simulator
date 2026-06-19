@@ -151,7 +151,7 @@ export default function StoredMatchRecollectionPanel({
         actualMatch,
         fitnessSummary: fitnessSummary(matches, actualMatch),
         review: reviews.find((item) => String(item.matchId) === String(matchId)) ?? null,
-        latestJob: jobs.find((job) => ["risks", "lineups", "match-reviews", "gemini-risks", "gemini-all", "all"].includes(job.scope)) ?? null,
+        latestJob: jobs.find((job) => ["risks", "lineups", "match-reviews", "ai-risks", "ai-all", "all"].includes(job.scope)) ?? null,
         events: readArrayStorage<unknown>(storageKeys.apiFootballEventsData),
         cardRecords: matchCardRecords.length > 0 ? matchCardRecords : allCardRecords.slice(0, 12),
         injuries: readArrayStorage<unknown>(storageKeys.apiFootballInjuriesData),
@@ -175,7 +175,7 @@ export default function StoredMatchRecollectionPanel({
             <Badge tone="API 실제 데이터">관리자 재수집 반영</Badge>
             {state.actualMatch ? <Badge tone={state.actualMatch.locked || (state.actualMatch.score.home !== null && state.actualMatch.score.away !== null) ? "success" : "warning"}>실제 API 결과 우선</Badge> : null}
             {state.latestJob ? <Badge tone={statusTone(state.latestJob.status)}>{state.latestJob.status}</Badge> : null}
-            {state.review ? <Badge tone={state.review.reviewType === "gemini" ? "AI 예측" : "분석 참고"}>{state.review.reviewType}</Badge> : null}
+            {state.review ? <Badge tone={state.review.reviewType === "ai" ? "AI 예측" : "분석 참고"}>{state.review.reviewType}</Badge> : null}
           </div>
           <h2 className="mt-3 text-xl font-black text-white">저장된 경기 재검증 결과</h2>
           <p className="mt-2 text-sm leading-6 text-cyan-50/75">

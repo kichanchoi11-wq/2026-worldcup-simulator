@@ -2,14 +2,14 @@ import { teamVerificationData } from "@/data/teamVerificationData";
 import { matchDetails, createMatchPageData } from "@/data/matchDetails";
 import { fetchFootballData, getFootballProviderStatus, normalizeMatches, normalizeStandings, normalizeTeams } from "@/lib/footballApi";
 import { buildCardRecords } from "@/lib/cardRecordService";
-import { createGeminiAnalysis, getGeminiProviderStatus } from "@/lib/geminiAnalysisService";
-import { createMatchFreshInfo, createTeamFreshInfo, getGeminiFreshInfoStatus } from "@/lib/geminiFreshInfoService";
+import { createAIAnalysis, getAIProviderStatus } from "@/lib/aiAnalysisService";
+import { createMatchFreshInfo, createTeamFreshInfo, getAIFreshInfoStatus } from "@/lib/aiFreshInfoService";
 import { createMatchReview } from "@/lib/matchReviewService";
 import { getAdvancedTeamDataAudit, getAllTeamAnalysisBundles, getBrokenPlayerNameAudit } from "@/lib/teamAnalysis";
 import type { ApiFootballResourceSnapshot, ApiFootballTrackedResource, FootballApiEnvelope } from "@/types/football";
 import type { CardRecord } from "@/types/card";
-import type { GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
-import type { GeminiFreshInfoResult, GeminiFreshInfoStatus } from "@/types/freshInfo";
+import type { AIAnalysisRecord, AIProviderStatus } from "@/types/ai";
+import type { AIFreshInfoResult, AIFreshInfoStatus } from "@/types/freshInfo";
 import type { CoachData, FormationData, KoreaVsTeamPrediction, PlayerData, PlayerStatus } from "@/types/team";
 
 export type RefreshStatus = "success" | "partial" | "failed" | "skipped";
@@ -45,10 +45,10 @@ export type FootballDataRefreshSnapshot = {
     teamAnalysisBundles: ReturnType<typeof getAllTeamAnalysisBundles>;
     matchReviews: NonNullable<ReturnType<typeof createMatchReview>>[];
     cardRecords: CardRecord[];
-    freshInfoResults: GeminiFreshInfoResult[];
-    freshInfoStatus: GeminiFreshInfoStatus;
-    geminiAnalyses: GeminiAnalysisRecord[];
-    geminiStatus: GeminiProviderStatus;
+    freshInfoResults: AIFreshInfoResult[];
+    freshInfoStatus: AIFreshInfoStatus;
+    aiAnalyses: AIAnalysisRecord[];
+    aiStatus: AIProviderStatus;
     brokenPlayerNames: ReturnType<typeof getBrokenPlayerNameAudit>;
     audit: ReturnType<typeof getAdvancedTeamDataAudit>;
     providerStatus: ReturnType<typeof getFootballProviderStatus>;
@@ -127,7 +127,7 @@ function compactKoreaAnalysis(teamAnalysisBundles: TeamAnalysisBundle[]) {
   };
 }
 
-async function createRefreshGeminiAnalyses(input: {
+async function createRefreshAIAnalyses(input: {
   mode: "manual" | "cron";
   refreshedAt: string;
   resourceSnapshots: ApiFootballResourceSnapshot[];
@@ -136,7 +136,7 @@ async function createRefreshGeminiAnalyses(input: {
   matchReviewCount: number;
   cardRecordCount: number;
   audit: ReturnType<typeof getAdvancedTeamDataAudit>;
-}): Promise<GeminiAnalysisRecord[]> {
+}): Promise<AIAnalysisRecord[]> {
   const sourceNames = sourceNamesFromSnapshots(input.resourceSnapshots);
   const korea = compactKoreaAnalysis(input.teamAnalysisBundles);
   const baseKey = `${input.mode}-${input.refreshedAt.slice(0, 13)}`;
@@ -157,7 +157,7 @@ async function createRefreshGeminiAnalyses(input: {
     cardRecordCount: input.cardRecordCount
   };
   const analyses = [
-    createGeminiAnalysis({
+    createAIAnalysis({
       kind: "refresh-summary",
       title: "새로고침 결과 요약",
       cacheKey: `refresh-summary-${baseKey}`,
@@ -170,10 +170,10 @@ async function createRefreshGeminiAnalyses(input: {
         `${input.resourceSnapshots.length}종 리소스 스냅샷 저장`,
         `${input.cardRecordCount}건 카드 확인 레코드 저장`
       ],
-      fallbackDataGaps: ["Gemini API 키 또는 응답이 없으면 내부 규칙 기반 요약을 표시합니다."],
+      fallbackDataGaps: ["AI API 키 또는 응답이 없으면 내부 규칙 기반 요약을 표시합니다."],
       sources: sourceNames
     }),
-    createGeminiAnalysis({
+    createAIAnalysis({
       kind: "risk-summary",
       title: "카드·부상·징계·체력 요약",
       cacheKey: `risk-summary-${baseKey}`,
@@ -195,7 +195,7 @@ async function createRefreshGeminiAnalyses(input: {
 
   if (input.mode === "manual" && korea) {
     analyses.push(
-      createGeminiAnalysis({
+      createAIAnalysis({
         kind: "coach-tactics",
         title: "대한민국 감독 전술 재분석",
         cacheKey: `korea-coach-tactics-${baseKey}`,
@@ -212,7 +212,7 @@ async function createRefreshGeminiAnalyses(input: {
         fallbackDataGaps: ["경기별 공식 라인업 API가 없으면 최근 포메이션은 신뢰 가능한 경기 기사와 정적 검증 데이터 기준입니다."],
         sources: korea.coach.sources.map((source) => source.sourceName ?? "출처 확인 필요")
       }),
-      createGeminiAnalysis({
+      createAIAnalysis({
         kind: "formation",
         title: "대한민국 포메이션 재분석",
         cacheKey: `korea-formation-${baseKey}`,
@@ -236,14 +236,14 @@ async function createRefreshGeminiAnalyses(input: {
 
 function freshInfoTargetLimit(mode: "manual" | "cron") {
   const fallback = mode === "manual" ? 4 : 2;
-  const value = Number(process.env.GEMINI_FRESH_INFO_MATCH_LIMIT);
+  const value = Number(process.env.LATEST_INFO_MATCH_LIMIT);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 async function createRefreshFreshInfo(input: {
   mode: "manual" | "cron";
   matches: ReturnType<typeof normalizeMatches>;
-}): Promise<GeminiFreshInfoResult[]> {
+}): Promise<AIFreshInfoResult[]> {
   const targetLimit = freshInfoTargetLimit(input.mode);
   const targetMatches = matchDetails
     .filter((match) => match.status === "종료" || match.score.home !== null || match.score.away !== null)
@@ -256,7 +256,7 @@ async function createRefreshFreshInfo(input: {
     ...teamTargets.map((teamId) => createTeamFreshInfo(teamId))
   ]);
 
-  return results.filter((result): result is GeminiFreshInfoResult => Boolean(result));
+  return results.filter((result): result is AIFreshInfoResult => Boolean(result));
 }
 
 export async function refreshFootballData(mode: "manual" | "cron" = "manual"): Promise<FootballDataRefreshSnapshot> {
@@ -305,8 +305,8 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
   const cardRecords = buildCardRecords({ apiEvents: fallbackResources.events, matches, refreshedAt });
   const providerStatus = getFootballProviderStatus();
   const freshInfoResults = await createRefreshFreshInfo({ mode, matches });
-  const freshInfoStatus = getGeminiFreshInfoStatus(freshInfoResults);
-  const geminiAnalyses = await createRefreshGeminiAnalyses({
+  const freshInfoStatus = getAIFreshInfoStatus(freshInfoResults);
+  const aiAnalyses = await createRefreshAIAnalyses({
     mode,
     refreshedAt,
     resourceSnapshots,
@@ -316,7 +316,7 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
     cardRecordCount: cardRecords.length,
     audit
   });
-  const geminiStatus = getGeminiProviderStatus();
+  const aiStatus = getAIProviderStatus();
   const results: RefreshResultItem[] = [
     item(
       "matches",
@@ -372,17 +372,17 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
       cardRecords.length
     ),
     item(
-      "gemini-analysis",
-      "Gemini 분석",
-      geminiAnalyses.some((analysis) => analysis.usedGemini) ? "success" : geminiAnalyses.length > 0 ? "partial" : "skipped",
-      geminiStatus.enabled
-        ? `Gemini 분석 ${geminiAnalyses.length}건 처리, 호출 ${geminiStatus.callCount}회, 캐시 ${geminiStatus.cacheHitCount}건입니다.`
-        : "GEMINI_API_KEY가 없어 내부 규칙 기반 분석으로 fallback했습니다.",
-      geminiAnalyses.length
+      "ai-analysis",
+      "AI 분석",
+      aiAnalyses.some((analysis) => analysis.usedAI) ? "success" : aiAnalyses.length > 0 ? "partial" : "skipped",
+      aiStatus.enabled
+        ? `AI 분석 ${aiAnalyses.length}건 처리, 호출 ${aiStatus.callCount}회, 캐시 ${aiStatus.cacheHitCount}건입니다.`
+        : "GROQ_API_KEY/OPENROUTER_API_KEY가 없어 내부 규칙 기반 분석으로 fallback했습니다.",
+      aiAnalyses.length
     ),
     item(
-      "gemini-fresh-info",
-      "Gemini 최신 정보 검색",
+      "ai-fresh-info",
+      "최신 정보 검색",
       freshInfoResults.some((result) => result.searchUsed) ? "success" : freshInfoResults.length > 0 ? "partial" : "skipped",
       freshInfoStatus.message,
       freshInfoResults.length
@@ -424,8 +424,8 @@ export async function refreshFootballData(mode: "manual" | "cron" = "manual"): P
       cardRecords,
       freshInfoResults,
       freshInfoStatus,
-      geminiAnalyses,
-      geminiStatus,
+      aiAnalyses,
+      aiStatus,
       brokenPlayerNames,
       audit,
       providerStatus

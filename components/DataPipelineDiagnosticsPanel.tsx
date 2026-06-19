@@ -6,8 +6,8 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { readArrayStorage, readStorage, storageKeys, writeStorage } from "@/lib/storage";
 import type { FootballDataRefreshSnapshot } from "@/lib/autoUpdateService";
 import type { ApiFootballResourceSnapshot, FootballMatch, StandingRow } from "@/types/football";
-import type { ApiFootballDiagnosis, ApiFootballDiagnosticCall, DiagnosticStatus, GeminiDiagnosis } from "@/types/diagnostics";
-import type { GeminiAnalysisRecord, GeminiProviderStatus } from "@/types/gemini";
+import type { ApiFootballDiagnosis, ApiFootballDiagnosticCall, DiagnosticStatus, AIDiagnosis } from "@/types/diagnostics";
+import type { AIAnalysisRecord, AIProviderStatus } from "@/types/ai";
 import type { RecollectionJob } from "@/types/recollection";
 
 type ReflectionStatus = {
@@ -16,7 +16,7 @@ type ReflectionStatus = {
   matches: number;
   standings: number;
   resourceSnapshots: number;
-  geminiAnalyses: number;
+  aiAnalyses: number;
   jobsCleaned: number;
 };
 
@@ -100,20 +100,20 @@ function staleRunningJob(job: RecollectionJob) {
 export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onSnapshotChange?: () => void }) {
   const { isAdminAuthenticated, isChecking } = useAdminAuth();
   const [apiDiagnosis, setApiDiagnosis] = useState<ApiFootballDiagnosis | null>(null);
-  const [geminiDiagnosis, setGeminiDiagnosis] = useState<GeminiDiagnosis | null>(null);
+  const [aiDiagnosis, setAIDiagnosis] = useState<AIDiagnosis | null>(null);
   const [resources, setResources] = useState<ApiFootballResourceSnapshot[]>([]);
   const [providerStatus, setProviderStatus] = useState<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(null);
-  const [geminiStatus, setGeminiStatus] = useState<GeminiProviderStatus | null>(null);
+  const [aiStatus, setAIStatus] = useState<AIProviderStatus | null>(null);
   const [reflectionStatus, setReflectionStatus] = useState<ReflectionStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
 
   function loadStoredState() {
     setApiDiagnosis(readStorage<ApiFootballDiagnosis | null>(storageKeys.apiFootballDiagnosticsData, null));
-    setGeminiDiagnosis(readStorage<GeminiDiagnosis | null>(storageKeys.geminiDiagnosticsData, null));
+    setAIDiagnosis(readStorage<AIDiagnosis | null>(storageKeys.aiDiagnosticsData, null));
     setResources(readArrayStorage<ApiFootballResourceSnapshot>(storageKeys.apiFootballResourceSnapshotsData));
     setProviderStatus(readStorage<FootballDataRefreshSnapshot["data"]["providerStatus"] | null>(storageKeys.apiFootballProviderStatusData, null));
-    setGeminiStatus(readStorage<GeminiProviderStatus | null>(storageKeys.geminiStatusData, null));
+    setAIStatus(readStorage<AIProviderStatus | null>(storageKeys.aiStatusData, null));
     setReflectionStatus(readStorage<ReflectionStatus | null>(storageKeys.dataReflectionStatusData, null));
   }
 
@@ -143,7 +143,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
       ["골/카드/교체 이벤트", sourceLabel(events, "데이터 없음")],
       ["부상/징계", sourceLabel(injuries, "데이터 없음 또는 static fallback")],
       ["체력", sourceLabel(statistics, "내부 계산")],
-      ["AI/Gemini 설명", `${readArrayStorage<GeminiAnalysisRecord>(storageKeys.geminiAnalysesData).length}건 저장`],
+      ["AI 설명", `${readArrayStorage<AIAnalysisRecord>(storageKeys.aiAnalysesData).length}건 저장`],
       ["대한민국 상대 전략/예측", sourceLabel(predictions, "static + 내부 예측")]
     ];
   }, [resources]);
@@ -177,33 +177,33 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
     }
   }
 
-  async function runGeminiDiagnosis(mode: "connection" | "timeout") {
+  async function runAIDiagnosis(mode: "connection" | "timeout") {
     if (!isAdminAuthenticated) {
-      setMessage("관리자 인증 후 Gemini 진단을 실행할 수 있습니다.");
+      setMessage("관리자 인증 후 AI 진단을 실행할 수 있습니다.");
       return;
     }
 
-    const label = mode === "timeout" ? "Gemini timeout 테스트" : "Gemini 연결 테스트";
+    const label = mode === "timeout" ? "AI timeout 테스트" : "AI 연결 테스트";
     setLoadingLabel(label);
     setMessage(`${label} 실행 중입니다.`);
 
     try {
-      const response = await fetch("/api/admin/diagnose-gemini", {
+      const response = await fetch("/api/admin/diagnose-ai", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode })
       });
-      const payload = (await response.json()) as GeminiDiagnosis;
+      const payload = (await response.json()) as AIDiagnosis;
 
-      writeStorage(storageKeys.geminiDiagnosticsData, payload);
-      writeStorage(storageKeys.geminiStatusData, payload.providerStatus);
-      setGeminiDiagnosis(payload);
-      setGeminiStatus(payload.providerStatus);
+      writeStorage(storageKeys.aiDiagnosticsData, payload);
+      writeStorage(storageKeys.aiStatusData, payload.providerStatus);
+      setAIDiagnosis(payload);
+      setAIStatus(payload.providerStatus);
       setMessage(`${label} 완료: ${payload.diagnosis[0] ?? "진단 결과를 저장했습니다."}`);
       onSnapshotChange?.();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gemini 진단 요청이 실패했습니다.");
+      setMessage(error instanceof Error ? error.message : "AI 진단 요청이 실패했습니다.");
     } finally {
       setLoadingLabel(null);
     }
@@ -235,7 +235,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
     const matches = readArrayStorage<FootballMatch>(storageKeys.apiMatchesData);
     const standings = readArrayStorage<StandingRow>(storageKeys.apiStandingsData);
     const storedResources = readArrayStorage<ApiFootballResourceSnapshot>(storageKeys.apiFootballResourceSnapshotsData);
-    const geminiAnalyses = readArrayStorage<GeminiAnalysisRecord>(storageKeys.geminiAnalysesData);
+    const aiAnalyses = readArrayStorage<AIAnalysisRecord>(storageKeys.aiAnalysesData);
     const jobs = readArrayStorage<RecollectionJob>(storageKeys.adminRecollectionJobsData);
     const cleaned = jobs.filter(staleRunningJob).length;
     const nextStatus: ReflectionStatus = {
@@ -247,7 +247,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
       matches: matches.length,
       standings: standings.length,
       resourceSnapshots: storedResources.length,
-      geminiAnalyses: geminiAnalyses.length,
+      aiAnalyses: aiAnalyses.length,
       jobsCleaned: cleaned
     };
 
@@ -274,7 +274,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
       matches: matches.length,
       standings: scoredMatches.length,
       resourceSnapshots: resources.length,
-      geminiAnalyses: readArrayStorage<GeminiAnalysisRecord>(storageKeys.geminiAnalysesData).length,
+      aiAnalyses: readArrayStorage<AIAnalysisRecord>(storageKeys.aiAnalysesData).length,
       jobsCleaned: 0
     };
 
@@ -297,7 +297,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
           <div className="flex flex-wrap gap-2">
             <Badge tone="API 실제 데이터">데이터 파이프라인 진단</Badge>
             <Badge tone={apiDiagnosis?.keyConfigured ? "success" : "warning"}>API-Football {apiDiagnosis?.keyConfigured ? "키 확인" : "키 미확인"}</Badge>
-            <Badge tone={geminiStatus?.enabled ? "success" : "warning"}>Gemini {geminiStatus?.enabled ? "키 확인" : "fallback"}</Badge>
+            <Badge tone={aiStatus?.enabled ? "success" : "warning"}>AI {aiStatus?.enabled ? "키 확인" : "fallback"}</Badge>
           </div>
           <h3 className="mt-3 text-xl font-black text-white">데이터 파이프라인 진단</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-emerald-50/75">
@@ -325,19 +325,19 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
         ))}
         <button
           type="button"
-          onClick={() => runGeminiDiagnosis("connection")}
+          onClick={() => runAIDiagnosis("connection")}
           disabled={!isAdminAuthenticated || Boolean(loadingLabel)}
           className="rounded border border-violet-300/50 bg-violet-400/15 px-3 py-2 text-sm font-black text-white transition hover:bg-violet-400/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loadingLabel === "Gemini 연결 테스트" ? "실행 중" : "Gemini 연결 테스트"}
+          {loadingLabel === "AI 연결 테스트" ? "실행 중" : "AI 연결 테스트"}
         </button>
         <button
           type="button"
-          onClick={() => runGeminiDiagnosis("timeout")}
+          onClick={() => runAIDiagnosis("timeout")}
           disabled={!isAdminAuthenticated || Boolean(loadingLabel)}
           className="rounded border border-violet-300/50 bg-violet-400/15 px-3 py-2 text-sm font-black text-white transition hover:bg-violet-400/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loadingLabel === "Gemini timeout 테스트" ? "실행 중" : "Gemini timeout 테스트"}
+          {loadingLabel === "AI timeout 테스트" ? "실행 중" : "AI timeout 테스트"}
         </button>
         <button type="button" onClick={runReflectionTest} className="rounded border border-trophy/60 bg-trophy/20 px-3 py-2 text-sm font-black text-white">
           화면 반영 테스트
@@ -346,7 +346,7 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
           실제 결과 동기화 테스트
         </button>
         <button type="button" onClick={cleanupStaleJobs} className="rounded border border-red-300/50 bg-red-400/15 px-3 py-2 text-sm font-black text-white">
-          멈춘 Gemini/재수집 작업 정리
+          멈춘 AI/재수집 작업 정리
         </button>
       </div>
 
@@ -441,18 +441,18 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
           </div>
         </div>
         <div className="rounded border border-white/10 bg-pitch-900/80 p-4">
-          <h4 className="font-black text-white">Gemini 진단</h4>
+          <h4 className="font-black text-white">AI 진단</h4>
           <div className="mt-3 grid gap-2 text-sm text-white/70">
-            <InfoLine label="키 설정" value={geminiDiagnosis ? (geminiDiagnosis.keyConfigured ? "설정됨" : "없음") : geminiStatus?.enabled ? "설정됨" : "진단 전"} />
-            <InfoLine label="모델 선택" value={geminiDiagnosis?.modelSelection ?? `${geminiStatus?.model ?? "진단 전"} → ${geminiStatus?.fallbackModel ?? "fallback"}`} />
-            <InfoLine label="실행 중/오래 실행" value={`${geminiStatus?.activeJobCount ?? 0}개 / ${geminiStatus?.staleJobCount ?? 0}개`} />
-            <InfoLine label="timeout/fallback" value={`${geminiStatus?.timeoutCount ?? 0}회 / ${geminiStatus?.fallbackCount ?? 0}회`} />
-            <InfoLine label="마지막 실패" value={geminiStatus?.lastFailureMessage ?? geminiDiagnosis?.call?.error ?? "없음"} />
-            <InfoLine label="결과 저장/반영" value={geminiStatus?.screenReflectionStatus ?? "진단 전"} />
+            <InfoLine label="키 설정" value={aiDiagnosis ? (aiDiagnosis.keyConfigured ? "설정됨" : "없음") : aiStatus?.enabled ? "설정됨" : "진단 전"} />
+            <InfoLine label="모델 선택" value={aiDiagnosis?.modelSelection ?? `${aiStatus?.model ?? "진단 전"} → ${aiStatus?.fallbackModel ?? "fallback"}`} />
+            <InfoLine label="실행 중/오래 실행" value={`${aiStatus?.activeJobCount ?? 0}개 / ${aiStatus?.staleJobCount ?? 0}개`} />
+            <InfoLine label="timeout/fallback" value={`${aiStatus?.timeoutCount ?? 0}회 / ${aiStatus?.fallbackCount ?? 0}회`} />
+            <InfoLine label="마지막 실패" value={aiStatus?.lastFailureMessage ?? aiDiagnosis?.call?.error ?? "없음"} />
+            <InfoLine label="결과 저장/반영" value={aiStatus?.screenReflectionStatus ?? "진단 전"} />
           </div>
-          {geminiStatus?.logs?.length ? (
+          {aiStatus?.logs?.length ? (
             <div className="mt-3 grid gap-2">
-              {(geminiStatus.logs ?? []).slice(0, 5).map((log) => (
+              {(aiStatus.logs ?? []).slice(0, 5).map((log) => (
                 <div key={log.id} className="rounded border border-white/10 bg-white/[0.04] p-3 text-xs leading-5 text-white/70">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={log.status === "success" || log.status === "cache" ? "success" : log.status === "fallback" ? "warning" : "danger"}>
@@ -462,10 +462,10 @@ export default function DataPipelineDiagnosticsPanel({ onSnapshotChange }: { onS
                   </div>
                   <p className="mt-2">{log.message}</p>
                   <p className="mt-1 text-white/50">
-                    모델 {log.model ?? geminiStatus.model} · fallback {geminiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
+                    모델 {log.model ?? aiStatus.model} · fallback {aiStatus.fallbackModel} · HTTP {log.httpStatus ?? "없음"} · retry {log.retryCount ?? 0}회 · payload {log.payloadBytes ?? 0} bytes
                   </p>
                   <p className="mt-1 text-white/50">
-                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || geminiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? geminiStatus.screenReflectionStatus}
+                    timeout {log.timeout ? "예" : "아니오"} · 내부 fallback {log.fallbackUsed ? "사용" : "미사용"} · 결과 저장 {log.fallbackResultSaved || aiStatus.resultSaveSuccess ? "성공" : "아직 없음"} · 화면 반영 {log.screenReflectionStatus ?? aiStatus.screenReflectionStatus}
                   </p>
                 </div>
               ))}

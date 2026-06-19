@@ -1,8 +1,8 @@
-import type { GeminiFreshInfoRequest, GeminiFreshInfoResult } from "@/types/freshInfo";
+import type { AIFreshInfoRequest, AIFreshInfoResult } from "@/types/freshInfo";
 
 type FreshInfoCacheEntry = {
   key: string;
-  result: GeminiFreshInfoResult;
+  result: AIFreshInfoResult;
   expiresAt: string;
 };
 
@@ -28,7 +28,7 @@ function getState(): FreshInfoCacheState {
   return globalThis.__worldCupFreshInfoCacheState;
 }
 
-export function createFreshInfoCacheKey(request: GeminiFreshInfoRequest) {
+export function createFreshInfoCacheKey(request: AIFreshInfoRequest) {
   return [
     request.targetType,
     request.targetId,
@@ -38,7 +38,12 @@ export function createFreshInfoCacheKey(request: GeminiFreshInfoRequest) {
 }
 
 export function getFreshInfoCacheTtlMs() {
-  const value = Number(process.env.GEMINI_FRESH_INFO_CACHE_TTL_MS);
+  const hours = Number(process.env.LATEST_INFO_CACHE_TTL_HOURS);
+  if (Number.isFinite(hours) && hours > 0) {
+    return hours * 60 * 60 * 1000;
+  }
+
+  const value = Number(process.env.LATEST_INFO_CACHE_TTL_MS);
   return Number.isFinite(value) && value >= 60_000 ? value : defaultFreshInfoCacheTtlMs;
 }
 
@@ -58,7 +63,7 @@ export function readFreshInfoCache(key: string) {
   return entry.result;
 }
 
-export function writeFreshInfoCache(key: string, result: GeminiFreshInfoResult) {
+export function writeFreshInfoCache(key: string, result: AIFreshInfoResult) {
   getState().cache.set(key, {
     key,
     result,

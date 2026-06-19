@@ -1,4 +1,4 @@
-import type { FreshInfoConfidence, FreshInfoItem, FreshInfoSource, GeminiFreshInfoResult } from "@/types/freshInfo";
+import type { FreshInfoConfidence, FreshInfoItem, FreshInfoSource, AIFreshInfoResult } from "@/types/freshInfo";
 
 function uniqueStrings(values: Array<string | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim().length > 0))));
@@ -27,7 +27,7 @@ export function confidenceFromItems(items: FreshInfoItem[]): FreshInfoConfidence
   return "낮음";
 }
 
-export function validateFreshInfoResult(result: GeminiFreshInfoResult): GeminiFreshInfoResult {
+export function validateFreshInfoResult(result: AIFreshInfoResult): AIFreshInfoResult {
   const checkedAt = result.searchedAt || new Date().toISOString();
   const sourceNames = new Set(result.sources.map((source) => source.name));
   const sourceUrls = new Map(result.sources.map((source) => [source.name, source.url]));

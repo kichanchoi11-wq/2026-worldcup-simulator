@@ -112,7 +112,7 @@ export interface TeamFitnessProfile extends Partial<SourceMeta> {
 }
 
 export interface MatchReviewMetadata {
-  generatedBy: "gemini" | "rules" | "fallback";
+  generatedBy: "ai" | "rules" | "fallback";
   generatedAt: string;
   model: string | null;
   dataSources: string[];
@@ -156,7 +156,7 @@ export interface MatchPageData {
 
 export interface MatchReview {
   matchId: string | number;
-  reviewType: "gemini" | "rules" | "fallback";
+  reviewType: "ai" | "rules" | "fallback";
   homeTeamName: string;
   awayTeamName: string;
   finalScore: {
