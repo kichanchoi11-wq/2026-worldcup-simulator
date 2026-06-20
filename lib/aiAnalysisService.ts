@@ -3,7 +3,10 @@ import { createMatchReview, createMatchReviewCacheKey, createRulesReviewMetadata
 import {
   estimateAITextPayloadBytes,
   generateAIText,
+  getAIChunkMaxPayloadBytes,
+  getAIHardPayloadBytes,
   getAIProviderTimeoutMs,
+  getAITargetPayloadBytes,
   getFallbackAIModel,
   getMaxAIPayloadBytes,
   getPrimaryAIModel
@@ -342,6 +345,8 @@ type PreparedAIRequest = {
 
 function prepareAIRequest(input: AIAnalysisInput): PreparedAIRequest {
   const maxPayloadBytes = getMaxAIPayloadBytes();
+  const targetPayloadBytes = Math.min(getAITargetPayloadBytes(), maxPayloadBytes);
+  const chunkMaxPayloadBytes = Math.min(getAIChunkMaxPayloadBytes(), getAIHardPayloadBytes());
   const originalPrompt = buildGenericAIPrompt(input);
   const originalPayloadBytes = estimateAITextPayloadBytes(originalPrompt);
   const levels: Array<"normal" | "tight" | "tiny"> = ["normal", "tight", "tiny"];
@@ -356,13 +361,13 @@ function prepareAIRequest(input: AIAnalysisInput): PreparedAIRequest {
     selected = compacted;
     selectedPrompt = prompt;
     selectedPayloadBytes = payloadBytes;
-    if (payloadBytes <= maxPayloadBytes) {
+    if (payloadBytes <= targetPayloadBytes) {
       break;
     }
   }
 
   const chunks =
-    selectedPayloadBytes > maxPayloadBytes
+    selectedPayloadBytes > targetPayloadBytes
       ? createAIChunks(input.kind, `${input.kind}-${input.cacheKey}`, selected.input)
           .map((chunk) => {
             const prompt = buildGenericAIPromptWithData(input, chunk.data);
@@ -373,7 +378,7 @@ function prepareAIRequest(input: AIAnalysisInput): PreparedAIRequest {
               data: chunk.data
             };
           })
-          .filter((chunk) => chunk.payloadBytes <= maxPayloadBytes)
+          .filter((chunk) => chunk.payloadBytes <= chunkMaxPayloadBytes)
       : [];
 
   return {

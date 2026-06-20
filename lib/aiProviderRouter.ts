@@ -44,7 +44,23 @@ function envNumber(name: string, fallback: number) {
 
 export function getMaxAIPayloadBytes() {
   const value = Number(process.env.AI_MAX_PAYLOAD_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : 30_000;
+  return Number.isFinite(value) && value > 0 ? value : 28_000;
+}
+
+export function getAITargetPayloadBytes() {
+  const value = Number(process.env.AI_TARGET_PAYLOAD_BYTES);
+  return Number.isFinite(value) && value > 0 ? value : 22_000;
+}
+
+export function getAIChunkMaxPayloadBytes() {
+  const value = Number(process.env.AI_CHUNK_MAX_PAYLOAD_BYTES);
+  return Number.isFinite(value) && value > 0 ? value : 20_000;
+}
+
+export function getAIHardPayloadBytes() {
+  const value = Number(process.env.AI_HARD_PAYLOAD_BYTES);
+  const maxPayloadBytes = getMaxAIPayloadBytes();
+  return Number.isFinite(value) && value > 0 ? value : Math.min(maxPayloadBytes, 28_000);
 }
 
 export function getAIProviderTimeoutMs(provider: ChatProvider = "groq") {
@@ -88,6 +104,7 @@ function buildBody(model: string, prompt: string) {
       { role: "user", content: prompt }
     ],
     temperature: 0.2,
+    max_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 700,
     response_format: { type: "json_object" }
   });
 }
@@ -104,6 +121,28 @@ function extractText(data: unknown) {
   const choice = (data as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0];
   const content = choice?.message?.content;
   return typeof content === "string" ? content : "";
+}
+
+let providerQueue = Promise.resolve();
+let lastProviderRequestAt = 0;
+
+async function withProviderQueue<T>(task: () => Promise<T>): Promise<T> {
+  const queued = providerQueue.catch(() => undefined).then(async () => {
+    const minIntervalMs = envNumber("AI_PROVIDER_MIN_INTERVAL_MS", 900);
+    const elapsed = Date.now() - lastProviderRequestAt;
+    if (elapsed < minIntervalMs) {
+      await new Promise((resolve) => setTimeout(resolve, minIntervalMs - elapsed));
+    }
+    lastProviderRequestAt = Date.now();
+    return task();
+  });
+
+  providerQueue = queued.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return queued;
 }
 
 async function callProvider(provider: ChatProvider, prompt: string, retryCount: number): Promise<AITextResult> {
@@ -145,7 +184,7 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
   const timeout = setTimeout(() => controller.abort(), getAIProviderTimeoutMs(provider));
 
   try {
-    const response = await fetch(config.url, {
+    const response = await withProviderQueue(() => fetch(config.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -154,7 +193,7 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       },
       body,
       signal: controller.signal
-    });
+    }));
     const text = await response.text();
 
     if (!response.ok) {
@@ -223,12 +262,13 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
 
 export async function generateAIText(prompt: string): Promise<AITextResult> {
   const estimatedPayloadBytes = payloadSize(getPrimaryAIModel(), prompt);
-  if (estimatedPayloadBytes > getMaxAIPayloadBytes()) {
+  const hardPayloadBytes = getAIHardPayloadBytes();
+  if (estimatedPayloadBytes > hardPayloadBytes) {
     return {
       ok: false,
       provider: "rule-based",
       model: null,
-      message: `AI payload가 ${estimatedPayloadBytes} bytes로 제한(${getMaxAIPayloadBytes()} bytes)을 초과해 API 호출 없이 규칙 기반 fallback을 사용합니다.`,
+      message: `AI payload가 ${estimatedPayloadBytes} bytes로 hard limit(${hardPayloadBytes} bytes)을 초과해 API 호출 없이 규칙 기반 fallback을 사용합니다.`,
       httpStatus: null,
       payloadBytes: estimatedPayloadBytes,
       fallbackUsed: true,

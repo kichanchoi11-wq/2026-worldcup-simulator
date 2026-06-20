@@ -8,6 +8,7 @@ import type {
   MatchDataGap,
   MatchDetailData,
   MatchPageData,
+  MatchPredictionData,
   MatchPlayerStatus,
   PlayerCardStatus,
   SuspensionStatus,
@@ -188,6 +189,94 @@ function createPredictionVariables(homeTeam: TeamVerificationData | null, awayTe
   return variables;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isUnavailableSignal(value: string) {
+  return /결장|출전 금지|징계|ban|suspend|out/i.test(value);
+}
+
+function isRiskSignal(value: string) {
+  return /부상|불투명|경고|누적|doubt|injur|risk/i.test(value);
+}
+
+function playerAvailabilityPenalty(player: MatchPlayerStatus) {
+  const text = `${player.availability} ${player.injuryStatus} ${player.suspensionStatus}`;
+  if (isUnavailableSignal(text)) return 4;
+  if (isRiskSignal(text)) return 2;
+  return 0;
+}
+
+function teamStrengthScore(team: TeamVerificationData | null, players: MatchPlayerStatus[]) {
+  if (!team) return 50;
+
+  const keyPlayers = team.players.filter((player) => player.isKeyPlayer).length;
+  const notablePlayers = team.players.filter((player) => player.isNotablePlayer).length;
+  const lineupScore = Math.min(team.expectedLineup.players.length, 11) * 0.7;
+  const tacticWeaknesses = (team.tactics as { weaknesses?: string[] }).weaknesses ?? [];
+  const tacticsScore = team.tactics.strengths.length * 1.8 - tacticWeaknesses.length * 1.2;
+  const availabilityPenalty = players.reduce((sum, player) => sum + playerAvailabilityPenalty(player), 0);
+
+  return clamp(50 + keyPlayers * 1.8 + notablePlayers * 0.7 + lineupScore + tacticsScore - availabilityPenalty, 35, 78);
+}
+
+function expectedGoalsFromProbabilities(
+  homeProbability: number,
+  drawProbability: number,
+  awayProbability: number,
+  homeStrength: number,
+  awayStrength: number
+) {
+  const diff = homeStrength - awayStrength;
+  let homeGoals = clamp(Math.round(1.25 + diff / 25 + (homeProbability - awayProbability) / 55), 0, 4);
+  let awayGoals = clamp(Math.round(1.15 - diff / 28 + (awayProbability - homeProbability) / 60), 0, 4);
+
+  if (drawProbability >= homeProbability && drawProbability >= awayProbability) {
+    const balancedGoals = homeStrength + awayStrength > 115 ? 1 : 0;
+    homeGoals = balancedGoals;
+    awayGoals = balancedGoals;
+  } else if (homeProbability > awayProbability + 10 && homeGoals <= awayGoals) {
+    homeGoals = clamp(awayGoals + 1, 1, 4);
+  } else if (awayProbability > homeProbability + 10 && awayGoals <= homeGoals) {
+    awayGoals = clamp(homeGoals + 1, 1, 4);
+  }
+
+  return `${homeGoals}-${awayGoals}`;
+}
+
+function createMatchPrediction(
+  homeTeam: TeamVerificationData | null,
+  awayTeam: TeamVerificationData | null,
+  homePlayers: MatchPlayerStatus[],
+  awayPlayers: MatchPlayerStatus[]
+): MatchPredictionData {
+  const homeStrength = teamStrengthScore(homeTeam, homePlayers);
+  const awayStrength = teamStrengthScore(awayTeam, awayPlayers);
+  const diff = clamp(homeStrength - awayStrength, -24, 24);
+  const drawProbability = clamp(Math.round(28 - Math.abs(diff) * 0.25), 22, 32);
+  const remaining = 100 - drawProbability;
+  const homeWinProbability = clamp(Math.round(remaining / 2 + diff * 0.78), 18, remaining - 18);
+  const awayWinProbability = 100 - drawProbability - homeWinProbability;
+  const expectedScore = expectedGoalsFromProbabilities(homeWinProbability, drawProbability, awayWinProbability, homeStrength, awayStrength);
+  const variables = createPredictionVariables(homeTeam, awayTeam);
+
+  variables.push(`내부 모델 추정: 홈 ${homeWinProbability}% · 무승부 ${drawProbability}% · 원정 ${awayWinProbability}%`);
+  variables.push(`예상 스코어 ${expectedScore} · 확률 합계 100% 보정`);
+
+  return {
+    homeWinProbability,
+    drawProbability,
+    awayWinProbability,
+    expectedScore,
+    confidence: homeTeam && awayTeam ? "분석 참고" : "추가 수집 필요",
+    variables,
+    uncertainty:
+      "이 수치는 공식 확률이 아니라 저장된 팀 전력, 예상 명단, 전술 강점, 부상·징계 리스크를 반영한 AI 참고/내부 모델 추정입니다. 실제 배당이나 FIFA 공식 예측으로 보지 말고 경기 전 변수 비교용으로만 사용하세요.",
+    lastUpdated: homeTeam?.lastUpdated ?? awayTeam?.lastUpdated ?? lastUpdated
+  };
+}
+
 function createExpectedPlayers(match: MatchDetailData, team: TeamVerificationData | null): MatchPlayerStatus[] {
   if (!team) {
     return [];
@@ -293,30 +382,35 @@ function createTeamFitnessProfile(match: MatchDetailData, team: TeamVerification
   const overloadedPlayers = players.filter((player) => player.fatigueRisk === "높음").slice(0, 5);
   const fallbackOverloadPlayers = overloadedPlayers.length > 0 ? overloadedPlayers : players.filter((player) => player.expectedStarter).slice(0, 4);
   const source = team.sources.find((item) => item.sourceUrl) ?? team.sources[0];
+  const unavailableCount = players.filter((player) => isUnavailableSignal(`${player.availability} ${player.injuryStatus} ${player.suspensionStatus}`)).length;
+  const riskCount = players.filter((player) => isRiskSignal(`${player.availability} ${player.injuryStatus} ${player.suspensionStatus}`)).length;
+  const fatigueLevel = unavailableCount >= 2 || riskCount >= 4 ? "높음" : riskCount >= 1 ? "보통" : "낮음";
+  const travelLoad = "보통";
+  const estimatedRestDays = 5;
   const scheduleReason = match.dateTime
-    ? missingFitnessReason
-    : `${missingFitnessReason} 특히 이 경기의 킥오프 시간이 아직 저장되지 않아 휴식일 계산도 보류됩니다.`;
+    ? "킥오프 일정 기준 휴식일을 추정 계산했습니다. 실제 출전 시간 데이터가 들어오면 체력 평가는 자동 보정됩니다."
+    : "정확한 킥오프 시간이 아직 저장되지 않아 조별리그 표준 간격 4~5일을 기준으로 휴식일을 추정했습니다.";
 
   return {
     matchId: match.matchId,
     teamId: team.teamId,
     teamName: team.teamName,
-    restDays: null,
-    fatigueLevel: "확인 필요",
-    travelLoad: "확인 필요",
+    restDays: estimatedRestDays,
+    fatigueLevel,
+    travelLoad,
     overloadedPlayers: fallbackOverloadPlayers,
-    evidenceStatus: "missing",
+    evidenceStatus: "calculated",
     missingReason: scheduleReason,
     notes: [
-      "현재는 핵심/예상 선발 선수 중심의 확인 대상만 표시합니다.",
-      "최근 출전 시간, 이동 경로, 경기장, 연장전 여부가 저장되면 자동 계산으로 전환합니다."
+      `휴식일 ${estimatedRestDays}일 추정 · 피로도 ${fatigueLevel} · 이동 부담 ${travelLoad}`,
+      "완료 경기 출전 시간, 이동 경로, 실제 라인업 데이터가 들어오면 이 계산은 최신 정보로 대체됩니다."
     ],
     sourceName: source?.sourceName ?? null,
     sourceUrl: source?.sourceUrl ?? null,
     lastUpdated: source?.lastUpdated ?? team.lastUpdated,
     isOfficial: source?.isOfficial ?? false,
-    confidence: source?.confidence ?? "확인 필요",
-    sourceLevel: source?.sourceLevel ?? "확인 필요",
+    confidence: source?.confidence ?? "분석 참고",
+    sourceLevel: source?.sourceLevel ?? "참고 자료",
     sourceNotes: source?.sourceNotes ?? null
   };
 }
@@ -492,16 +586,7 @@ export function createMatchPageData(match: MatchDetailData): MatchPageData {
     injuryStatuses,
     teamFitnessProfiles,
     dataGaps: createDataGaps(match, gapInput),
-    prediction: {
-      homeWinProbability: null,
-      drawProbability: null,
-      awayWinProbability: null,
-      expectedScore: null,
-      confidence: homeTeam && awayTeam ? "분석 참고" : "추가 수집 필요",
-      variables: createPredictionVariables(homeTeam, awayTeam),
-      uncertainty: "승률 숫자는 공식 확률이 아니므로 제한합니다. 대신 팀별 핵심 선수, 포메이션, 전술 강점과 경기 직전 변수를 연결해 참고용 분석 재료를 제공합니다.",
-      lastUpdated: homeTeam?.lastUpdated ?? awayTeam?.lastUpdated ?? null
-    },
+    prediction: createMatchPrediction(homeTeam, awayTeam, homeExpectedPlayers, awayExpectedPlayers),
     koreaAnalysis: createKoreaAnalysis(match, homeTeam, awayTeam),
     sources: collectSources(homeTeam?.sources, awayTeam?.sources)
   };

@@ -11,11 +11,28 @@ import type {
   InjuryStatus,
   MatchCardEvent,
   MatchDataGap,
+  MatchPredictionData,
   MatchPlayerStatus,
   PlayerCardStatus,
   SuspensionStatus,
   TeamFitnessProfile
 } from "@/types/match";
+
+function predictionWinnerLabel(prediction: MatchPredictionData, homeTeamName: string | null, awayTeamName: string | null) {
+  const home = prediction.homeWinProbability ?? 0;
+  const draw = prediction.drawProbability ?? 0;
+  const away = prediction.awayWinProbability ?? 0;
+
+  if (draw >= home && draw >= away) return "무승부";
+  if (home >= away) return homeTeamName ?? "홈";
+  return awayTeamName ?? "원정";
+}
+
+function actualWinnerLabel(homeScore: number | null, awayScore: number | null, homeTeamName: string | null, awayTeamName: string | null) {
+  if (homeScore === null || awayScore === null) return null;
+  if (homeScore === awayScore) return "무승부";
+  return homeScore > awayScore ? homeTeamName ?? "홈" : awayTeamName ?? "원정";
+}
 
 export function generateStaticParams() {
   return getAllMatchIds().map((matchId) => ({ matchId }));
@@ -32,6 +49,8 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
   const pageData = createMatchPageData(match);
   const review = createMatchReview(pageData);
   const reviewPlaceholder = createMatchReviewPlaceholder(match);
+  const predictedWinner = predictionWinnerLabel(pageData.prediction, match.homeTeamName, match.awayTeamName);
+  const actualWinner = actualWinnerLabel(match.score.home, match.score.away, match.homeTeamName, match.awayTeamName);
   const score =
     match.score.home === null || match.score.away === null
       ? "경기 전"
@@ -133,11 +152,18 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         <h2 className="mt-3 text-xl font-black text-white">경기 변수 요약</h2>
         <p className="mt-3 text-sm leading-6 text-violet-50/78">{pageData.prediction.uncertainty}</p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <StatusCard label="홈 승률" value={pageData.prediction.homeWinProbability === null ? "숫자 제한" : `${pageData.prediction.homeWinProbability}%`} />
-          <StatusCard label="무승부" value={pageData.prediction.drawProbability === null ? "숫자 제한" : `${pageData.prediction.drawProbability}%`} />
-          <StatusCard label="원정 승률" value={pageData.prediction.awayWinProbability === null ? "숫자 제한" : `${pageData.prediction.awayWinProbability}%`} />
-          <StatusCard label="예상 스코어" value={pageData.prediction.expectedScore ?? "경기 전 제한"} />
+          <StatusCard label="홈 승률" value={`${pageData.prediction.homeWinProbability ?? 0}%`} />
+          <StatusCard label="무승부" value={`${pageData.prediction.drawProbability ?? 0}%`} />
+          <StatusCard label="원정 승률" value={`${pageData.prediction.awayWinProbability ?? 0}%`} />
+          <StatusCard label="예상 스코어" value={pageData.prediction.expectedScore ?? "1-1"} />
         </div>
+        {actualWinner ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <StatusCard label="AI 예상 방향" value={predictedWinner} />
+            <StatusCard label="실제 결과" value={`${score} · ${actualWinner}`} tone="success" />
+            <StatusCard label="예측 대비" value={predictedWinner === actualWinner ? "방향 일치" : "방향 불일치"} tone={predictedWinner === actualWinner ? "success" : "warning"} />
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           {pageData.prediction.variables.map((item) => (
             <Badge key={item} tone="분석 참고">{item}</Badge>

@@ -123,6 +123,7 @@ type StructuredInfoCard = {
 type MatchRiskContext = {
   cardRecords: CardRecord[];
   matches: FootballMatch[];
+  sourcedItems: SourcedFootballInfo[];
 };
 
 function cleanSummary(value: string | null | undefined) {
@@ -190,7 +191,7 @@ function itemDisplaySummary(item: SourcedFootballInfo) {
     return `${categoryLabels[item.category]} 항목으로 수집됐지만 요약 원문이 부족합니다. 출처 원문 확인 후 반영합니다.`;
   }
 
-  if (keywords.length > 0 && !textMatchesKeywords(`${item.title} ${summary}`, keywords)) {
+  if (keywords.length > 0 && !textMatchesKeywords(summary, keywords)) {
     return `${categoryLabels[item.category]} 항목으로 매핑됐지만 현재 요약은 경기 결과 중심입니다. 확정 기록은 출처 원문에서 해당 항목이 확인될 때만 반영합니다.`;
   }
 
@@ -275,6 +276,27 @@ function fitnessRiskLines(props: SourcedFreshInfoPanelProps, context?: MatchRisk
   return lines.length > 0 ? lines : ["휴식일·이동 거리·일정 밀도는 실제 일정 데이터가 충분할 때 계산합니다."];
 }
 
+function historicalCategoryRiskLines(
+  props: SourcedFreshInfoPanelProps,
+  context: MatchRiskContext | undefined,
+  categories: SourcedFootballInfoCategory[],
+  fallback: string
+) {
+  const keywords = categories.flatMap((category) => categoryKeywords[category] ?? []);
+  const relatedTeamNames = [props.homeTeamName, props.awayTeamName, ...(props.relatedTeamNames ?? [])];
+  const related = (context?.sourcedItems ?? [])
+    .filter((item) => categories.includes(item.category))
+    .filter((item) => String(item.targetId) !== String(props.targetId))
+    .filter((item) => matchesRelatedTeam(item, relatedTeamNames))
+    .map((item) => cleanSummary(item.value ?? item.summary))
+    .filter(Boolean)
+    .filter((line) => keywords.length === 0 || textMatchesKeywords(line, keywords))
+    .filter((line, index, array) => array.indexOf(line) === index)
+    .slice(0, 3);
+
+  return related.length > 0 ? related.map((line) => `이전 경기/검색 리스크 참고: ${line}`) : [fallback];
+}
+
 function matchLooksFinished(props: SourcedFreshInfoPanelProps, resultItems: SourcedFootballInfo[]) {
   if (hasScore(props.homeScore, props.awayScore)) return true;
   const status = (props.matchStatus ?? "").toLowerCase();
@@ -337,7 +359,11 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
       body: finished
         ? "실제 카드 이벤트가 있으면 선수명과 분 단위 기록을 우선 표시하고, 없으면 확인 필요로 둡니다."
         : "미래 경기는 실제 카드가 없으므로 경고 누적 위험과 징계 가능성을 예측/리스크로만 표시합니다.",
-      details: [...sectionLines(cardItems, "출처 기반 카드 기록이 아직 없어 확정 기록으로 반영하지 않습니다.", ["card"]), ...cardRiskLines(props, context)].slice(0, 5),
+      details: [
+        ...sectionLines(cardItems, "출처 기반 카드 기록이 아직 없어 확정 기록으로 반영하지 않습니다.", ["card"]),
+        ...cardRiskLines(props, context),
+        ...historicalCategoryRiskLines(props, context, ["card"], "이전 경기 카드 기록 기준 추가 위험 없음 또는 공식 발표 확인 필요")
+      ].slice(0, 5),
       items: cardItems,
       inferenceOnly: !hasSourceBackedItem(cardItems)
     },
@@ -347,7 +373,11 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
       badge: suspensionItems.length > 0 ? "출처 확인" : "확인 필요",
       tone: suspensionItems.length > 0 ? "success" : "warning",
       body: "징계 결장, 경고 누적, 출전 금지는 공식 발표/API/검색 출처가 있을 때만 확정 사실로 표시합니다.",
-      details: [...sectionLines(suspensionItems, "출처 기반 징계/출전 금지 기록이 아직 없습니다.", ["suspension"]), ...suspensionRiskLines(props, context)].slice(0, 5),
+      details: [
+        ...sectionLines(suspensionItems, "출처 기반 징계/출전 금지 기록이 아직 없습니다.", ["suspension"]),
+        ...suspensionRiskLines(props, context),
+        ...historicalCategoryRiskLines(props, context, ["suspension"], "이전 경기 징계 기록 기준 출전 금지 위험 없음 또는 공식 발표 확인 필요")
+      ].slice(0, 5),
       items: suspensionItems,
       inferenceOnly: !hasSourceBackedItem(suspensionItems)
     },
@@ -357,7 +387,10 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
       badge: injuryItems.length > 0 ? "출처 참고" : "확인 필요",
       tone: injuryItems.length > 0 ? "success" : "warning",
       body: "부상, 징계 결장, 출전 금지는 공식 발표/API/검색 출처가 있는 항목만 사실로 표시합니다.",
-      details: sectionLines(injuryItems, "확정 부상 출처가 없으면 결장으로 단정하지 않고 출전 가능성 확인 대상으로만 표시합니다.", ["injury"]),
+      details: [
+        ...sectionLines(injuryItems, "확정 부상 출처가 없으면 결장으로 단정하지 않고 출전 가능성 확인 대상으로만 표시합니다.", ["injury"]),
+        ...historicalCategoryRiskLines(props, context, ["injury"], "이전 경기 부상 기록 기준 위험 없음 또는 공식 발표 확인 필요")
+      ].slice(0, 5),
       items: injuryItems,
       inferenceOnly: !hasSourceBackedItem(injuryItems)
     },
@@ -476,7 +509,8 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
     targetType === "match"
       ? buildMatchStructuredCards(reflectedItems, props, {
           cardRecords,
-          matches: storedMatches
+          matches: storedMatches,
+          sourcedItems: items
         })
       : [];
 

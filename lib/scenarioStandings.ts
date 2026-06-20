@@ -26,7 +26,12 @@ function findTeam(group: TeamGroup, teamId: string | null | undefined, teamName:
 
   return (
     group.teams.find((team) => team.teamSlug === teamId || team.id === teamId) ??
-    group.teams.find((team) => normalizeName(team.nameKo) === normalizedTeamName || normalizeName(team.nameEn) === normalizedTeamName) ??
+    group.teams.find(
+      (team) =>
+        normalizeName(team.nameKo) === normalizedTeamName ||
+        normalizeName(team.nameEn) === normalizedTeamName ||
+        normalizeName(team.teamCode) === normalizedTeamName
+    ) ??
     null
   );
 }
@@ -204,6 +209,10 @@ function namesMatch(a: string | null | undefined, b: string | null | undefined) 
   return Boolean(left && right && (left.includes(right) || right.includes(left)));
 }
 
+function inputTeamMatchesText(text: string, teamName: string, teamId: string) {
+  return namesMatch(text, teamName) || namesMatch(text, teamId);
+}
+
 function groupMatches(a: string | null | undefined, b: string | null | undefined) {
   const left = normalizeName(a);
   const right = normalizeName(b);
@@ -216,8 +225,12 @@ function findStoredMatch(input: ScenarioMatchInput, matches: FootballMatch[]) {
     matches.find((match) => String(match.id) === input.matchId || String(match.matchNumber) === input.matchId) ??
     matches.find((match) => {
       if (match.group && !groupMatches(match.group, input.groupId)) return false;
-      const sameDirection = namesMatch(match.homeTeam, input.homeTeamName) && namesMatch(match.awayTeam, input.awayTeamName);
-      const swapped = namesMatch(match.homeTeam, input.awayTeamName) && namesMatch(match.awayTeam, input.homeTeamName);
+      const sameDirection =
+        inputTeamMatchesText(match.homeTeam, input.homeTeamName, input.homeTeamId) &&
+        inputTeamMatchesText(match.awayTeam, input.awayTeamName, input.awayTeamId);
+      const swapped =
+        inputTeamMatchesText(match.homeTeam, input.awayTeamName, input.awayTeamId) &&
+        inputTeamMatchesText(match.awayTeam, input.homeTeamName, input.homeTeamId);
       return sameDirection || swapped;
     }) ??
     null
@@ -235,17 +248,50 @@ function extractScoreFromText(text: string): ScorePair | null {
   return { home, away };
 }
 
+function teamIndexInText(text: string, teamName: string, teamId: string) {
+  const normalizedText = normalizeName(text);
+  const aliases = [teamName, teamId].map(normalizeName).filter(Boolean);
+  if (!normalizedText || aliases.length === 0) return -1;
+  const indexes = aliases.map((alias) => normalizedText.indexOf(alias)).filter((index) => index >= 0);
+  return indexes.length > 0 ? Math.min(...indexes) : -1;
+}
+
+function orientScoreForInput(input: ScenarioMatchInput, text: string, score: ScorePair): ScorePair {
+  const homeIndex = teamIndexInText(text, input.homeTeamName, input.homeTeamId);
+  const awayIndex = teamIndexInText(text, input.awayTeamName, input.awayTeamId);
+
+  if (homeIndex >= 0 && awayIndex >= 0 && awayIndex < homeIndex) {
+    return { home: score.away, away: score.home };
+  }
+
+  return score;
+}
+
+function sourcedInfoText(info: SourcedFootballInfo) {
+  return [
+    info.targetName,
+    info.teamName,
+    info.title,
+    info.summary,
+    info.value,
+    ...info.sources.map((source) => `${source.title} ${source.url ?? ""}`)
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function findSearchScore(input: ScenarioMatchInput, sourcedItems: SourcedFootballInfo[]) {
   const item = sourcedItems.find((info) => {
     if (info.targetType !== "match" || info.category !== "match_result") return false;
     if (String(info.targetId) === input.matchId || String(info.matchId) === input.matchId) return true;
-    const text = `${info.targetName} ${info.title} ${info.summary}`;
-    return namesMatch(text, input.homeTeamName) && namesMatch(text, input.awayTeamName);
+    const text = sourcedInfoText(info);
+    return inputTeamMatchesText(text, input.homeTeamName, input.homeTeamId) && inputTeamMatchesText(text, input.awayTeamName, input.awayTeamId);
   });
 
   if (!item) return null;
-  const score = extractScoreFromText(`${item.value ?? ""} ${item.title} ${item.summary}`);
-  return score ? { score, item } : null;
+  const text = sourcedInfoText(item);
+  const score = extractScoreFromText(text);
+  return score ? { score: orientScoreForInput(input, text, score), item } : null;
 }
 
 function standingRowsHaveUsableResults(rows: StandingRow[]) {
@@ -320,7 +366,7 @@ export function applyStoredActualResultsToInputs(
     const storedMatch = findStoredMatch(input, matches);
     if (storedMatch && storedMatch.score.home !== null && storedMatch.score.away !== null) {
       appliedCount += 1;
-      const sameDirection = namesMatch(storedMatch.homeTeam, input.homeTeamName);
+      const sameDirection = inputTeamMatchesText(storedMatch.homeTeam, input.homeTeamName, input.homeTeamId);
       const home = sameDirection ? storedMatch.score.home : storedMatch.score.away;
       const away = sameDirection ? storedMatch.score.away : storedMatch.score.home;
 

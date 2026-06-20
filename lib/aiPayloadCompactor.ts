@@ -213,7 +213,7 @@ export function createAIChunks(kind: AIAnalysisKind, targetId: string, compactIn
   for (const key of chunkKeys) {
     const value = record[key];
     if (Array.isArray(value) && value.length > 1) {
-      const chunkSize = key === "cardRecords" ? 8 : key === "players" ? 6 : 3;
+      const chunkSize = key === "cardRecords" ? 4 : key === "players" ? 4 : 2;
       return chunkArrayField({ ...record, [key]: [] }, kind, targetId, key, value, chunkSize);
     }
   }
