@@ -12,6 +12,57 @@ type ScorePair = {
 
 const finishedStatusKeywords = ["FINISHED", "AWARDED", "AFTER_EXTRA_TIME", "PENALTY_SHOOTOUT", "종료", "경기종료", "FT"];
 
+const teamAliasGroups: string[][] = [
+  ["mexico", "멕시코", "mex", "mx"],
+  ["south africa", "남아프리카공화국", "남아공", "rsa"],
+  ["south korea", "korea republic", "대한민국", "한국", "kor", "korea-republic"],
+  ["czech republic", "czechia", "체코", "cze"],
+  ["canada", "캐나다", "can"],
+  ["bosnia and herzegovina", "bosnia", "보스니아 헤르체고비나", "보스니아", "bih"],
+  ["qatar", "카타르", "qat"],
+  ["switzerland", "스위스", "sui"],
+  ["brazil", "브라질", "bra"],
+  ["morocco", "모로코", "mar"],
+  ["haiti", "아이티", "hai"],
+  ["scotland", "스코틀랜드", "sco"],
+  ["united states", "usa", "미국", "united-states"],
+  ["paraguay", "파라과이", "par"],
+  ["australia", "호주", "aus"],
+  ["turkey", "turkiye", "튀르키예", "tur"],
+  ["germany", "독일", "ger"],
+  ["curacao", "퀴라소", "cuw"],
+  ["ivory coast", "cote d ivoire", "코트디부아르", "civ"],
+  ["ecuador", "에콰도르", "ecu"],
+  ["netherlands", "네덜란드", "ned"],
+  ["japan", "일본", "jpn"],
+  ["sweden", "스웨덴", "swe"],
+  ["tunisia", "튀니지", "tun"],
+  ["belgium", "벨기에", "bel"],
+  ["egypt", "이집트", "egy"],
+  ["iran", "이란", "irn"],
+  ["new zealand", "뉴질랜드", "nzl"],
+  ["spain", "스페인", "esp"],
+  ["cape verde", "카보베르데", "cpv"],
+  ["saudi arabia", "사우디아라비아", "ksa"],
+  ["uruguay", "우루과이", "uru"],
+  ["france", "프랑스", "fra"],
+  ["senegal", "세네갈", "sen"],
+  ["iraq", "이라크", "irq"],
+  ["norway", "노르웨이", "nor"],
+  ["argentina", "아르헨티나", "arg"],
+  ["algeria", "알제리", "alg"],
+  ["austria", "오스트리아", "aut"],
+  ["jordan", "요르단", "jor"],
+  ["portugal", "포르투갈", "por"],
+  ["dr congo", "congo dr", "콩고민주공화국", "dr콩고", "cod"],
+  ["uzbekistan", "우즈베키스탄", "uzb"],
+  ["colombia", "콜롬비아", "col"],
+  ["england", "잉글랜드", "eng"],
+  ["croatia", "크로아티아", "cro"],
+  ["ghana", "가나", "gha"],
+  ["panama", "파나마", "pan"]
+];
+
 function normalizeName(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
@@ -19,6 +70,19 @@ function normalizeName(value: string | null | undefined) {
     .replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-z0-9가-힣]+/g, " ")
     .trim();
+}
+
+function aliasesFor(...values: Array<string | null | undefined>) {
+  const aliases = new Set(values.map(normalizeName).filter(Boolean));
+
+  for (const group of teamAliasGroups) {
+    const normalizedGroup = group.map(normalizeName).filter(Boolean);
+    if (normalizedGroup.some((alias) => aliases.has(alias))) {
+      normalizedGroup.forEach((alias) => aliases.add(alias));
+    }
+  }
+
+  return Array.from(aliases);
 }
 
 function findTeam(group: TeamGroup, teamId: string | null | undefined, teamName: string | null | undefined): TeamRef | null {
@@ -30,7 +94,8 @@ function findTeam(group: TeamGroup, teamId: string | null | undefined, teamName:
       (team) =>
         normalizeName(team.nameKo) === normalizedTeamName ||
         normalizeName(team.nameEn) === normalizedTeamName ||
-        normalizeName(team.teamCode) === normalizedTeamName
+        normalizeName(team.teamCode) === normalizedTeamName ||
+        aliasesFor(team.nameKo, team.nameEn, team.teamCode, team.teamSlug, team.id).some((alias) => aliasesFor(teamName, teamId).includes(alias))
     ) ??
     null
   );
@@ -204,13 +269,14 @@ export function isFinishedFootballMatch(match: FootballMatch) {
 }
 
 function namesMatch(a: string | null | undefined, b: string | null | undefined) {
-  const left = normalizeName(a);
-  const right = normalizeName(b);
-  return Boolean(left && right && (left.includes(right) || right.includes(left)));
+  const leftAliases = aliasesFor(a);
+  const rightAliases = aliasesFor(b);
+  return leftAliases.some((left) => rightAliases.some((right) => left === right || left.includes(right) || right.includes(left)));
 }
 
 function inputTeamMatchesText(text: string, teamName: string, teamId: string) {
-  return namesMatch(text, teamName) || namesMatch(text, teamId);
+  const normalizedText = normalizeName(text);
+  return aliasesFor(teamName, teamId).some((alias) => normalizedText.includes(alias));
 }
 
 function groupMatches(a: string | null | undefined, b: string | null | undefined) {
@@ -250,7 +316,7 @@ function extractScoreFromText(text: string): ScorePair | null {
 
 function teamIndexInText(text: string, teamName: string, teamId: string) {
   const normalizedText = normalizeName(text);
-  const aliases = [teamName, teamId].map(normalizeName).filter(Boolean);
+  const aliases = aliasesFor(teamName, teamId);
   if (!normalizedText || aliases.length === 0) return -1;
   const indexes = aliases.map((alias) => normalizedText.indexOf(alias)).filter((index) => index >= 0);
   return indexes.length > 0 ? Math.min(...indexes) : -1;
@@ -282,7 +348,7 @@ function sourcedInfoText(info: SourcedFootballInfo) {
 
 function findSearchScore(input: ScenarioMatchInput, sourcedItems: SourcedFootballInfo[]) {
   const item = sourcedItems.find((info) => {
-    if (info.targetType !== "match" || info.category !== "match_result") return false;
+    if (info.targetType !== "match" || !["match_result", "match_status", "match_review"].includes(info.category)) return false;
     if (String(info.targetId) === input.matchId || String(info.matchId) === input.matchId) return true;
     const text = sourcedInfoText(info);
     return inputTeamMatchesText(text, input.homeTeamName, input.homeTeamId) && inputTeamMatchesText(text, input.awayTeamName, input.awayTeamId);
@@ -413,13 +479,25 @@ export function toActualStandingsFromStoredData(
 ) {
   const initial = createInitialScenarioMatchInputs(groups);
   const { inputs, appliedCount } = applyStoredActualResultsToInputs(initial, apiMatches, sourcedItems);
+  const calculatedFromMatches = calculateScenarioStandings(groups, inputs, "actual");
+  const apiBased = standingRowsHaveUsableResults(apiStandings) ? mapApiStandingsWithMissingTeams(groups, apiStandings) : null;
 
   if (appliedCount > 0) {
-    return calculateScenarioStandings(groups, inputs, "actual");
+    if (!apiBased) return calculatedFromMatches;
+
+    return Object.fromEntries(
+      groups.map((group) => {
+        const matchRows = calculatedFromMatches[group.id] ?? [];
+        const apiRows = apiBased[group.id] ?? [];
+        const matchPlayed = matchRows.reduce((sum, row) => sum + row.played, 0);
+        const apiPlayed = apiRows.reduce((sum, row) => sum + row.played, 0);
+        return [group.id, matchPlayed >= apiPlayed ? matchRows : apiRows];
+      })
+    ) as Record<string, ScenarioStandingRow[]>;
   }
 
-  if (standingRowsHaveUsableResults(apiStandings)) {
-    return mapApiStandingsWithMissingTeams(groups, apiStandings);
+  if (apiBased) {
+    return apiBased;
   }
 
   return calculateScenarioStandings(groups, [], "actual");

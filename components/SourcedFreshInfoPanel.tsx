@@ -135,6 +135,108 @@ function cleanSummary(value: string | null | undefined) {
     .trim();
 }
 
+const teamNameKoByEnglish: Record<string, string> = {
+  "South Korea": "대한민국",
+  "Korea Republic": "대한민국",
+  "Czech Republic": "체코",
+  Czechia: "체코",
+  Mexico: "멕시코",
+  "South Africa": "남아프리카공화국",
+  Canada: "캐나다",
+  "Bosnia and Herzegovina": "보스니아 헤르체고비나",
+  Qatar: "카타르",
+  Switzerland: "스위스",
+  Brazil: "브라질",
+  Morocco: "모로코",
+  Haiti: "아이티",
+  Scotland: "스코틀랜드",
+  "United States": "미국",
+  USA: "미국",
+  Paraguay: "파라과이",
+  Australia: "호주",
+  Turkey: "튀르키예",
+  Germany: "독일",
+  Curacao: "퀴라소",
+  "Ivory Coast": "코트디부아르",
+  Ecuador: "에콰도르",
+  Netherlands: "네덜란드",
+  Japan: "일본",
+  Sweden: "스웨덴",
+  Tunisia: "튀니지",
+  Belgium: "벨기에",
+  Egypt: "이집트",
+  Iran: "이란",
+  "New Zealand": "뉴질랜드",
+  Spain: "스페인",
+  "Cape Verde": "카보베르데",
+  "Saudi Arabia": "사우디아라비아",
+  Uruguay: "우루과이",
+  France: "프랑스",
+  Senegal: "세네갈",
+  Iraq: "이라크",
+  Norway: "노르웨이",
+  Argentina: "아르헨티나",
+  Algeria: "알제리",
+  Austria: "오스트리아",
+  Jordan: "요르단",
+  Portugal: "포르투갈",
+  "DR Congo": "DR콩고",
+  Uzbekistan: "우즈베키스탄",
+  Colombia: "콜롬비아",
+  England: "잉글랜드",
+  Croatia: "크로아티아",
+  Ghana: "가나",
+  Panama: "파나마"
+};
+
+function hasEnglishSentence(value: string) {
+  const englishLetters = value.match(/[A-Za-z]/g)?.length ?? 0;
+  const koreanLetters = value.match(/[가-힣]/g)?.length ?? 0;
+  return englishLetters > 24 && englishLetters > koreanLetters;
+}
+
+function replaceKnownEnglishNames(value: string) {
+  return Object.entries(teamNameKoByEnglish)
+    .sort((a, b) => b[0].length - a[0].length)
+    .reduce((text, [english, korean]) => text.replace(new RegExp(`\\b${english.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), korean), value);
+}
+
+function translateKnownFootballSummary(value: string | null | undefined) {
+  const cleaned = cleanSummary(value);
+  if (!cleaned) return "";
+
+  const resultMatch = cleaned.match(
+    /The 2026 FIFA World Cup match between (.+?) and (.+?) ended with a (\d{1,2})-(\d{1,2}) victory for (.+?)\. The game took place on (.+?) at (.+?)(?:\.|$)/i
+  );
+  if (resultMatch) {
+    const home = replaceKnownEnglishNames(resultMatch[1]);
+    const away = replaceKnownEnglishNames(resultMatch[2]);
+    const winner = replaceKnownEnglishNames(resultMatch[5]);
+    const date = resultMatch[6].replace(/^June\s+/i, "6월 ");
+    const venue = replaceKnownEnglishNames(resultMatch[7]);
+    return `${home}와 ${away}의 2026 FIFA 월드컵 경기는 ${winner}의 ${resultMatch[3]}-${resultMatch[4]} 승리로 끝났습니다. 경기는 ${date}, ${venue}에서 열렸습니다.`;
+  }
+
+  const squadMatch = cleaned.match(/(.+?) announced their 26-man squad for the 2026 FIFA World Cup, with coach (.+?) leading the team\./i);
+  if (squadMatch) {
+    return `${replaceKnownEnglishNames(squadMatch[1])}은 2026 FIFA 월드컵 26인 명단을 발표했고, ${squadMatch[2]} 감독이 팀을 이끕니다.`;
+  }
+
+  return replaceKnownEnglishNames(cleaned);
+}
+
+function userVisibleText(value: string | null | undefined, fallback: string) {
+  const translated = translateKnownFootballSummary(value);
+  if (!translated) return fallback;
+  if (hasEnglishSentence(translated)) return fallback;
+  return translated;
+}
+
+function sourceTitleKo(title: string) {
+  const translated = replaceKnownEnglishNames(title);
+  return hasEnglishSentence(translated) ? "출처 원문" : translated;
+}
+
 function categoryItems(items: SourcedFootballInfo[], categories: SourcedFootballInfoCategory[]) {
   return items.filter((item) => categories.includes(item.category));
 }
@@ -168,15 +270,30 @@ function textMatchesKeywords(value: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(normalized(keyword)));
 }
 
-function sectionLines(items: SourcedFootballInfo[], fallback: string, categories: SourcedFootballInfoCategory[]) {
+function hasGenericResultSignal(value: string) {
+  return /(\d{1,2}\s*[-:]\s*\d{1,2})|defeated|beat|won|ended with|victory|승리|이겼|꺾었|경기 결과|경기종료|득점/i.test(value);
+}
+
+function hasCategorySpecificSignal(value: string, categories: SourcedFootballInfoCategory[]) {
   const keywords = categories.flatMap((category) => categoryKeywords[category] ?? []);
+  return keywords.length === 0 || textMatchesKeywords(value, keywords);
+}
+
+function isAllowedSectionLine(value: string, categories: SourcedFootballInfoCategory[]) {
+  if (!hasCategorySpecificSignal(value, categories)) return false;
+  const resultAllowed = categories.some((category) => ["match_result", "match_status", "match_review"].includes(category));
+  if (!resultAllowed && hasGenericResultSignal(value)) return false;
+  return true;
+}
+
+function sectionLines(items: SourcedFootballInfo[], fallback: string, categories: SourcedFootballInfoCategory[]) {
   const lines = items
     .map((item) => {
-      const summary = cleanSummary(item.value ?? item.summary);
-      return summary || item.title;
+      const categoryFallback = `${categoryLabels[item.category]} 항목은 출처를 찾았지만 사용자 화면에 표시할 확정 문장이 부족합니다.`;
+      return userVisibleText(item.value ?? item.summary, userVisibleText(item.title, categoryFallback));
     })
     .filter(Boolean)
-    .filter((line) => keywords.length === 0 || textMatchesKeywords(line, keywords))
+    .filter((line) => isAllowedSectionLine(line, categories))
     .filter((line, index, array) => array.indexOf(line) === index)
     .slice(0, 3);
 
@@ -184,18 +301,22 @@ function sectionLines(items: SourcedFootballInfo[], fallback: string, categories
 }
 
 function itemDisplaySummary(item: SourcedFootballInfo) {
-  const summary = cleanSummary(item.value ?? item.summary);
+  const summary = userVisibleText(item.value ?? item.summary, "");
   const keywords = categoryKeywords[item.category] ?? [];
 
   if (!summary) {
-    return `${categoryLabels[item.category]} 항목으로 수집됐지만 요약 원문이 부족합니다. 출처 원문 확인 후 반영합니다.`;
+    return `${categoryLabels[item.category]} 항목으로 수집됐지만 사용자 화면에 표시할 한국어 요약이 부족합니다. 출처 원문 확인 후 반영합니다.`;
   }
 
   if (keywords.length > 0 && !textMatchesKeywords(summary, keywords)) {
-    return `${categoryLabels[item.category]} 항목으로 매핑됐지만 현재 요약은 경기 결과 중심입니다. 확정 기록은 출처 원문에서 해당 항목이 확인될 때만 반영합니다.`;
+    return `${categoryLabels[item.category]} 항목으로 매핑됐지만 현재 요약은 해당 카테고리의 확정 정보가 아닙니다. 확정 기록은 출처 원문에서 해당 항목이 확인될 때만 반영합니다.`;
   }
 
   return summary;
+}
+
+function itemDisplayTitle(item: SourcedFootballInfo) {
+  return userVisibleText(item.title, `${replaceKnownEnglishNames(item.targetName)} ${categoryLabels[item.category]}`);
 }
 
 function hasSourceBackedItem(items: SourcedFootballInfo[]) {
@@ -204,6 +325,54 @@ function hasSourceBackedItem(items: SourcedFootballInfo[]) {
 
 function hasScore(homeScore: number | null | undefined, awayScore: number | null | undefined) {
   return typeof homeScore === "number" && typeof awayScore === "number";
+}
+
+function sourcedText(item: SourcedFootballInfo) {
+  return [item.targetName, item.teamName, item.title, item.summary, item.value, ...item.sources.map((source) => source.title)].filter(Boolean).join(" ");
+}
+
+function extractScoreFromText(value: string | null | undefined) {
+  const match = (value ?? "").match(/(\d{1,2})\s*[-:]\s*(\d{1,2})/);
+  if (!match) return null;
+  const home = Number(match[1]);
+  const away = Number(match[2]);
+  return Number.isFinite(home) && Number.isFinite(away) ? { home, away } : null;
+}
+
+function resultInfoFromItems(props: SourcedFreshInfoPanelProps, resultItems: SourcedFootballInfo[]) {
+  const storedScore = hasScore(props.homeScore, props.awayScore)
+    ? {
+        home: props.homeScore as number,
+        away: props.awayScore as number
+      }
+    : null;
+  const searchScore = resultItems.map((item) => extractScoreFromText(sourcedText(item))).find(Boolean) ?? null;
+  const score = storedScore ?? searchScore;
+  const text = resultItems.map(sourcedText).join(" ");
+  const finished =
+    Boolean(score) ||
+    /(finished|ft|경기종료|종료|승리|이겼|꺾었|defeated|beat|won|ended with|victory)/i.test(`${props.matchStatus ?? ""} ${text}`);
+  const scoreLabel = score
+    ? `${props.homeTeamName ?? "홈팀"} ${score.home} - ${score.away} ${props.awayTeamName ?? "원정팀"}`
+    : "스코어 확인 필요";
+
+  return {
+    finished,
+    score,
+    scoreLabel
+  };
+}
+
+function venueLine(props: SourcedFreshInfoPanelProps, venueItems: SourcedFootballInfo[], resultItems: SourcedFootballInfo[]) {
+  if (props.venue || props.matchDateTime) {
+    return `${props.matchDateTime ?? "킥오프 시간 확인 필요"} · ${props.venue ?? "경기장 확인 필요"}`;
+  }
+
+  const text = [...venueItems, ...resultItems].map(sourcedText).join(" ");
+  const atVenue = text.match(/\bat\s+([^.,]*?(?:Stadium|Arena|Field|Park|Centre|Center)[^.,]*)/i);
+  if (atVenue) return `경기장 참고: ${replaceKnownEnglishNames(atVenue[1])}`;
+  if (/guadalajara/i.test(text)) return "경기장 참고: 과달라하라 지역 경기장으로 검색 출처에 언급됐습니다. 공식 경기장명은 추가 확인이 필요합니다.";
+  return "경기장과 킥오프 시간은 FIFA/API 일정 데이터 또는 검색 출처에서 확인되면 자동 보강됩니다.";
 }
 
 function teamNameMatches(a: string | null | undefined, b: string | null | undefined) {
@@ -288,9 +457,10 @@ function historicalCategoryRiskLines(
     .filter((item) => categories.includes(item.category))
     .filter((item) => String(item.targetId) !== String(props.targetId))
     .filter((item) => matchesRelatedTeam(item, relatedTeamNames))
-    .map((item) => cleanSummary(item.value ?? item.summary))
+    .map((item) => userVisibleText(item.value ?? item.summary, ""))
     .filter(Boolean)
     .filter((line) => keywords.length === 0 || textMatchesKeywords(line, keywords))
+    .filter((line) => isAllowedSectionLine(line, categories))
     .filter((line, index, array) => array.indexOf(line) === index)
     .slice(0, 3);
 
@@ -298,10 +468,7 @@ function historicalCategoryRiskLines(
 }
 
 function matchLooksFinished(props: SourcedFreshInfoPanelProps, resultItems: SourcedFootballInfo[]) {
-  if (hasScore(props.homeScore, props.awayScore)) return true;
-  const status = (props.matchStatus ?? "").toLowerCase();
-  if (status.includes("finished") || status.includes("종료") || status.includes("ft")) return true;
-  return resultItems.some((item) => /defeated|beat|won|승리|경기종료|finished/i.test(`${item.title} ${item.summary}`));
+  return resultInfoFromItems(props, resultItems).finished;
 }
 
 function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedFreshInfoPanelProps, context?: MatchRiskContext): StructuredInfoCard[] {
@@ -313,10 +480,9 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
   const injuryItems = categoryItems(items, ["injury"]);
   const fitnessItems = categoryItems(items, ["fitness"]);
   const lineupItems = categoryItems(items, ["lineup", "formation"]);
+  const resultInfo = resultInfoFromItems(props, resultItems);
   const finished = matchLooksFinished(props, resultItems);
-  const scoreLabel = hasScore(props.homeScore, props.awayScore)
-    ? `${props.homeTeamName ?? "홈팀"} ${props.homeScore} - ${props.awayScore} ${props.awayTeamName ?? "원정팀"}`
-    : "스코어 확인 전";
+  const scoreLabel = resultInfo.scoreLabel;
 
   return [
     {
@@ -334,8 +500,8 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
       title: "경기장/일정",
       badge: props.venue ? "확정 참고" : "확인 필요",
       tone: props.venue ? "success" : "warning",
-      body: `${props.matchDateTime ?? "일정 확인 필요"} · ${props.venue ?? "경기장 확인 필요"}`,
-      details: sectionLines(venueItems, "경기장과 킥오프 시간은 FIFA/API 일정 데이터가 들어오면 자동 보강됩니다.", ["venue", "match_status"]),
+      body: venueLine(props, venueItems, resultItems),
+      details: sectionLines(venueItems, "경기장과 킥오프 시간은 FIFA/API 일정 데이터가 들어오면 자동 보강됩니다.", ["venue"]),
       items: venueItems,
       inferenceOnly: !props.venue && !hasSourceBackedItem(venueItems)
     },
@@ -360,7 +526,7 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
         ? "실제 카드 이벤트가 있으면 선수명과 분 단위 기록을 우선 표시하고, 없으면 확인 필요로 둡니다."
         : "미래 경기는 실제 카드가 없으므로 경고 누적 위험과 징계 가능성을 예측/리스크로만 표시합니다.",
       details: [
-        ...sectionLines(cardItems, "출처 기반 카드 기록이 아직 없어 확정 기록으로 반영하지 않습니다.", ["card"]),
+        ...sectionLines(cardItems, finished ? "저장된 실제 카드 이벤트가 아직 없습니다. 공식 경기 보고서/API 확인 전까지 선수명·시간·카드 종류는 확인 필요입니다." : "미래 경기는 실제 카드가 없으므로 경고 누적과 퇴장 리스크만 참고로 표시합니다.", ["card"]),
         ...cardRiskLines(props, context),
         ...historicalCategoryRiskLines(props, context, ["card"], "이전 경기 카드 기록 기준 추가 위험 없음 또는 공식 발표 확인 필요")
       ].slice(0, 5),
@@ -374,7 +540,7 @@ function buildMatchStructuredCards(items: SourcedFootballInfo[], props: SourcedF
       tone: suspensionItems.length > 0 ? "success" : "warning",
       body: "징계 결장, 경고 누적, 출전 금지는 공식 발표/API/검색 출처가 있을 때만 확정 사실로 표시합니다.",
       details: [
-        ...sectionLines(suspensionItems, "출처 기반 징계/출전 금지 기록이 아직 없습니다.", ["suspension"]),
+        ...sectionLines(suspensionItems, "출처 기반 징계/출전 금지 기록이 아직 없습니다. 공식 징계 공지 또는 경기 보고서 확인 전까지 결장으로 단정하지 않습니다.", ["suspension"]),
         ...suspensionRiskLines(props, context),
         ...historicalCategoryRiskLines(props, context, ["suspension"], "이전 경기 징계 기록 기준 출전 금지 위험 없음 또는 공식 발표 확인 필요")
       ].slice(0, 5),
@@ -455,11 +621,11 @@ function StructuredCardsGrid({ cards }: { cards: StructuredInfoCard[] }) {
                       rel="noreferrer"
                       className="rounded border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 font-semibold text-emerald-50 hover:bg-emerald-400/20"
                     >
-                      {source.provider}: {source.title}
+                      {source.provider}: {sourceTitleKo(source.title)}
                     </a>
                   ) : (
                     <span key={`${card.key}-${source.itemId}-${source.title}`} className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-semibold text-white/65">
-                      {source.provider}: {source.title}
+                      {source.provider}: {sourceTitleKo(source.title)}
                     </span>
                   )
                 )}
@@ -593,7 +759,7 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
                       {item.generatedBy === "search" ? "검색 출처" : item.generatedBy === "ai_summary" ? "AI 분석" : "내부 계산"}
                     </Badge>
                   </div>
-                  <p className="mt-2 break-words text-sm font-black text-white">{item.title}</p>
+                  <p className="mt-2 break-words text-sm font-black text-white">{itemDisplayTitle(item)}</p>
                   <p className="mt-2 text-sm leading-6 text-white/68">{itemDisplaySummary(item)}</p>
                   <p className="mt-2 text-xs text-white/45">
                     신뢰도: {confidenceLabel(item)} · 업데이트: {formatDate(item.updatedAt)}
@@ -609,11 +775,11 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
                             rel="noreferrer"
                             className="rounded border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 font-semibold text-emerald-50 hover:bg-emerald-400/20"
                           >
-                            {source.provider}: {source.title}
+                            {source.provider}: {sourceTitleKo(source.title)}
                           </a>
                         ) : (
                           <span key={`${item.id}-${source.title}`} className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-semibold text-white/65">
-                            {source.provider}: {source.title}
+                            {source.provider}: {sourceTitleKo(source.title)}
                           </span>
                         )
                       )}

@@ -208,6 +208,42 @@ function playerAvailabilityPenalty(player: MatchPlayerStatus) {
   return 0;
 }
 
+function powerIndexAdjustment(team: TeamVerificationData | null) {
+  const text = `${team?.powerIndex ?? ""} ${(team?.recentAchievements ?? []).join(" ")}`;
+  let score = 0;
+
+  if (/우승|챔피언|champion|상위권|강호|elite|top/i.test(text)) score += 4;
+  if (/중상위권|홈 이점|공동 개최국|개최국/i.test(text)) score += 3;
+  if (/본선 경험|월드컵|연속 출전|최근/i.test(text)) score += 1.5;
+  if (/추가 수집 필요|확인 필요|불안|하위|약체/i.test(text)) score -= 2;
+
+  return score;
+}
+
+function formationConfidenceAdjustment(team: TeamVerificationData | null) {
+  if (!team) return 0;
+  const formationText = [
+    team.formation.formation,
+    team.expectedLineup.formation,
+    team.tactics.summary,
+    team.tactics.attackingStyle,
+    team.tactics.defensiveStyle
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (/확인 필요|추가 수집 필요|재검증/.test(formationText)) return -1.5;
+  return formationText.trim() ? 1.2 : 0;
+}
+
+function hostVenueAdjustment(team: TeamVerificationData | null, isHome: boolean) {
+  if (!team) return 0;
+  const hostTeamIds = new Set(["mexico", "canada", "united-states"]);
+  let score = isHome ? 2 : 0;
+  if (hostTeamIds.has(team.teamId)) score += isHome ? 4 : 2;
+  if (/홈 이점|공동 개최국|개최국/.test(`${team.powerIndex ?? ""} ${(team.recentAchievements ?? []).join(" ")}`)) score += isHome ? 2 : 1;
+  return score;
+}
+
 function teamStrengthScore(team: TeamVerificationData | null, players: MatchPlayerStatus[]) {
   if (!team) return 50;
 
@@ -218,7 +254,7 @@ function teamStrengthScore(team: TeamVerificationData | null, players: MatchPlay
   const tacticsScore = team.tactics.strengths.length * 1.8 - tacticWeaknesses.length * 1.2;
   const availabilityPenalty = players.reduce((sum, player) => sum + playerAvailabilityPenalty(player), 0);
 
-  return clamp(50 + keyPlayers * 1.8 + notablePlayers * 0.7 + lineupScore + tacticsScore - availabilityPenalty, 35, 78);
+  return clamp(50 + keyPlayers * 1.8 + notablePlayers * 0.7 + lineupScore + tacticsScore + powerIndexAdjustment(team) + formationConfidenceAdjustment(team) - availabilityPenalty, 35, 82);
 }
 
 function expectedGoalsFromProbabilities(
@@ -229,16 +265,16 @@ function expectedGoalsFromProbabilities(
   awayStrength: number
 ) {
   const diff = homeStrength - awayStrength;
-  let homeGoals = clamp(Math.round(1.25 + diff / 25 + (homeProbability - awayProbability) / 55), 0, 4);
-  let awayGoals = clamp(Math.round(1.15 - diff / 28 + (awayProbability - homeProbability) / 60), 0, 4);
+  let homeGoals = clamp(Math.round(1.35 + diff / 20 + (homeProbability - awayProbability) / 42), 0, 4);
+  let awayGoals = clamp(Math.round(1.05 - diff / 24 + (awayProbability - homeProbability) / 48), 0, 4);
 
-  if (drawProbability >= homeProbability && drawProbability >= awayProbability) {
-    const balancedGoals = homeStrength + awayStrength > 115 ? 1 : 0;
+  if (drawProbability >= homeProbability && drawProbability >= awayProbability && Math.abs(diff) <= 3) {
+    const balancedGoals = homeStrength + awayStrength > 118 ? 2 : 1;
     homeGoals = balancedGoals;
     awayGoals = balancedGoals;
-  } else if (homeProbability > awayProbability + 10 && homeGoals <= awayGoals) {
+  } else if (homeProbability >= awayProbability + 6 && homeGoals <= awayGoals) {
     homeGoals = clamp(awayGoals + 1, 1, 4);
-  } else if (awayProbability > homeProbability + 10 && awayGoals <= homeGoals) {
+  } else if (awayProbability >= homeProbability + 6 && awayGoals <= homeGoals) {
     awayGoals = clamp(homeGoals + 1, 1, 4);
   }
 
@@ -246,21 +282,26 @@ function expectedGoalsFromProbabilities(
 }
 
 function createMatchPrediction(
+  match: MatchDetailData,
   homeTeam: TeamVerificationData | null,
   awayTeam: TeamVerificationData | null,
   homePlayers: MatchPlayerStatus[],
   awayPlayers: MatchPlayerStatus[]
 ): MatchPredictionData {
-  const homeStrength = teamStrengthScore(homeTeam, homePlayers);
-  const awayStrength = teamStrengthScore(awayTeam, awayPlayers);
-  const diff = clamp(homeStrength - awayStrength, -24, 24);
-  const drawProbability = clamp(Math.round(28 - Math.abs(diff) * 0.25), 22, 32);
+  const homeStrength = teamStrengthScore(homeTeam, homePlayers) + hostVenueAdjustment(homeTeam, true);
+  const awayStrength = teamStrengthScore(awayTeam, awayPlayers) + hostVenueAdjustment(awayTeam, false);
+  const diff = clamp(homeStrength - awayStrength, -30, 30);
+  const drawProbability = clamp(Math.round(27 - Math.abs(diff) * 0.22), 20, 31);
   const remaining = 100 - drawProbability;
-  const homeWinProbability = clamp(Math.round(remaining / 2 + diff * 0.78), 18, remaining - 18);
+  const homeWinProbability = clamp(Math.round(remaining / 2 + diff * 0.85), 16, remaining - 16);
   const awayWinProbability = 100 - drawProbability - homeWinProbability;
   const expectedScore = expectedGoalsFromProbabilities(homeWinProbability, drawProbability, awayWinProbability, homeStrength, awayStrength);
   const variables = createPredictionVariables(homeTeam, awayTeam);
 
+  variables.push(`저장 팀 전력 반영: 홈 ${Math.round(homeStrength)}점 · 원정 ${Math.round(awayStrength)}점`);
+  variables.push(`홈/개최지 효과: ${homeTeam?.teamName ?? "홈팀"} ${hostVenueAdjustment(homeTeam, true)}점 · ${awayTeam?.teamName ?? "원정팀"} ${hostVenueAdjustment(awayTeam, false)}점`);
+  variables.push(`가용성 리스크: ${homePlayers.reduce((sum, player) => sum + playerAvailabilityPenalty(player), 0)}점 / ${awayPlayers.reduce((sum, player) => sum + playerAvailabilityPenalty(player), 0)}점`);
+  variables.push(`일정/장소 정보: ${match.dateTime ?? "킥오프 미정"} · ${match.stadium ?? "경기장 미정"}`);
   variables.push(`내부 모델 추정: 홈 ${homeWinProbability}% · 무승부 ${drawProbability}% · 원정 ${awayWinProbability}%`);
   variables.push(`예상 스코어 ${expectedScore} · 확률 합계 100% 보정`);
 
@@ -586,7 +627,7 @@ export function createMatchPageData(match: MatchDetailData): MatchPageData {
     injuryStatuses,
     teamFitnessProfiles,
     dataGaps: createDataGaps(match, gapInput),
-    prediction: createMatchPrediction(homeTeam, awayTeam, homeExpectedPlayers, awayExpectedPlayers),
+    prediction: createMatchPrediction(match, homeTeam, awayTeam, homeExpectedPlayers, awayExpectedPlayers),
     koreaAnalysis: createKoreaAnalysis(match, homeTeam, awayTeam),
     sources: collectSources(homeTeam?.sources, awayTeam?.sources)
   };

@@ -117,7 +117,7 @@ function StandingsPanel({
             <div className="bg-white/10 px-3 py-2 text-sm font-black text-white">{group.name}</div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] text-left text-sm">
-                <thead className="bg-white/[0.06] text-xs uppercase text-white/55">
+                <thead className="bg-white/[0.06] text-xs text-white/55">
                   <tr>
                     <th className="px-2 py-2">#</th>
                     <th className="px-2 py-2">Team</th>

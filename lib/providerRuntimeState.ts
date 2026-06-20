@@ -27,8 +27,18 @@ function envNumber(name: string, fallback: number | null = null) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-export function getProviderCooldownMs() {
-  const minutes = envNumber("PROVIDER_COOLDOWN_MINUTES", 30) ?? 30;
+export function getProviderCooldownMs(provider?: RuntimeProviderName) {
+  const providerSpecific =
+    provider === "groq"
+      ? envNumber("GROQ_COOLDOWN_MINUTES")
+      : provider === "openrouter"
+        ? envNumber("OPENROUTER_COOLDOWN_MINUTES")
+        : provider === "tavily"
+          ? envNumber("TAVILY_COOLDOWN_MINUTES")
+          : provider === "exa"
+            ? envNumber("EXA_COOLDOWN_MINUTES")
+            : null;
+  const minutes = providerSpecific ?? envNumber("PROVIDER_COOLDOWN_MINUTES", 30) ?? 30;
   return minutes * 60 * 1000;
 }
 
@@ -135,7 +145,7 @@ export function recordProviderFailure(provider: RuntimeProviderName, status: num
   state.providers.set(provider, {
     ...current,
     status: nextStatus,
-    cooldownUntil: new Date(Date.now() + getProviderCooldownMs()).toISOString(),
+    cooldownUntil: new Date(Date.now() + getProviderCooldownMs(provider)).toISOString(),
     lastFailureAt: new Date().toISOString(),
     lastFailureMessage: message.slice(0, 500)
   });

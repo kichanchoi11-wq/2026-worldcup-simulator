@@ -128,7 +128,7 @@ let lastProviderRequestAt = 0;
 
 async function withProviderQueue<T>(task: () => Promise<T>): Promise<T> {
   const queued = providerQueue.catch(() => undefined).then(async () => {
-    const minIntervalMs = envNumber("AI_PROVIDER_MIN_INTERVAL_MS", 900);
+    const minIntervalMs = envNumber("AI_PROVIDER_MIN_INTERVAL_MS", 5_000);
     const elapsed = Date.now() - lastProviderRequestAt;
     if (elapsed < minIntervalMs) {
       await new Promise((resolve) => setTimeout(resolve, minIntervalMs - elapsed));
