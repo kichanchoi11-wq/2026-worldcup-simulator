@@ -204,10 +204,18 @@ function namesMatch(a: string | null | undefined, b: string | null | undefined) 
   return Boolean(left && right && (left.includes(right) || right.includes(left)));
 }
 
+function groupMatches(a: string | null | undefined, b: string | null | undefined) {
+  const left = normalizeName(a);
+  const right = normalizeName(b);
+  if (!left || !right) return false;
+  return left === right || left === `group ${right}` || left === `${right}조` || left.includes(` ${right} `) || left.endsWith(` ${right}`);
+}
+
 function findStoredMatch(input: ScenarioMatchInput, matches: FootballMatch[]) {
   return (
-    matches.find((match) => String(match.id) === input.matchId) ??
+    matches.find((match) => String(match.id) === input.matchId || String(match.matchNumber) === input.matchId) ??
     matches.find((match) => {
+      if (match.group && !groupMatches(match.group, input.groupId)) return false;
       const sameDirection = namesMatch(match.homeTeam, input.homeTeamName) && namesMatch(match.awayTeam, input.awayTeamName);
       const swapped = namesMatch(match.homeTeam, input.awayTeamName) && namesMatch(match.awayTeam, input.homeTeamName);
       return sameDirection || swapped;
@@ -238,6 +246,68 @@ function findSearchScore(input: ScenarioMatchInput, sourcedItems: SourcedFootbal
   if (!item) return null;
   const score = extractScoreFromText(`${item.value ?? ""} ${item.title} ${item.summary}`);
   return score ? { score, item } : null;
+}
+
+function standingRowsHaveUsableResults(rows: StandingRow[]) {
+  return rows.some(
+    (row) =>
+      row.played > 0 ||
+      row.won > 0 ||
+      row.drawn > 0 ||
+      row.lost > 0 ||
+      row.goalsFor > 0 ||
+      row.goalsAgainst > 0 ||
+      row.goalDifference !== 0 ||
+      row.points > 0
+  );
+}
+
+function mapApiStandingsWithMissingTeams(groups: TeamGroup[], apiStandings: StandingRow[]) {
+  const grouped = calculateScenarioStandings(groups, [], "actual");
+
+  for (const group of groups) {
+    const order = new Map(group.teams.map((team, index) => [team.id, index]));
+    const rows = [...(grouped[group.id] ?? [])];
+
+    for (const apiRow of apiStandings.filter((row) => groupMatches(row.group, group.id))) {
+      const team = group.teams.find((item) => namesMatch(item.nameKo, apiRow.team) || namesMatch(item.nameEn, apiRow.team));
+      const teamId = team?.id ?? `${group.id}-${apiRow.team}`;
+      const nextRow: ScenarioStandingRow = {
+        groupId: group.id,
+        teamId,
+        teamName: team?.nameKo ?? apiRow.team,
+        played: apiRow.played,
+        won: apiRow.won,
+        drawn: apiRow.drawn,
+        lost: apiRow.lost,
+        goalsFor: apiRow.goalsFor,
+        goalsAgainst: apiRow.goalsAgainst,
+        goalDifference: apiRow.goalDifference,
+        points: apiRow.points,
+        rank: 0,
+        source: "actual"
+      };
+      const currentIndex = rows.findIndex((row) => row.teamId === teamId || namesMatch(row.teamName, apiRow.team));
+      if (currentIndex >= 0) {
+        rows[currentIndex] = nextRow;
+      } else {
+        rows.push(nextRow);
+      }
+    }
+
+    grouped[group.id] = rows
+      .sort(
+        (a, b) =>
+          b.points - a.points ||
+          b.goalDifference - a.goalDifference ||
+          b.goalsFor - a.goalsFor ||
+          a.goalsAgainst - b.goalsAgainst ||
+          (order.get(a.teamId) ?? 999) - (order.get(b.teamId) ?? 999)
+      )
+      .map((row, index) => ({ ...row, rank: index + 1 }));
+  }
+
+  return grouped;
 }
 
 export function applyStoredActualResultsToInputs(
@@ -295,37 +365,16 @@ export function toActualStandingsFromStoredData(
   apiMatches: FootballMatch[],
   sourcedItems: SourcedFootballInfo[]
 ) {
-  if (apiStandings.length > 0) {
-    const grouped: Record<string, ScenarioStandingRow[]> = {};
+  const initial = createInitialScenarioMatchInputs(groups);
+  const { inputs, appliedCount } = applyStoredActualResultsToInputs(initial, apiMatches, sourcedItems);
 
-    for (const group of groups) {
-      const rows = apiStandings
-        .filter((row) => row.group === group.id)
-        .map((row, index): ScenarioStandingRow => {
-          const team = group.teams.find((item) => namesMatch(item.nameKo, row.team) || namesMatch(item.nameEn, row.team));
-          return {
-            groupId: group.id,
-            teamId: team?.id ?? `${group.id}-${row.team}`,
-            teamName: team?.nameKo ?? row.team,
-            played: row.played,
-            won: row.won,
-            drawn: row.drawn,
-            lost: row.lost,
-            goalsFor: row.goalsFor,
-            goalsAgainst: row.goalsAgainst,
-            goalDifference: row.goalDifference,
-            points: row.points,
-            rank: index + 1,
-            source: "actual"
-          };
-        });
-      grouped[group.id] = rows;
-    }
-
-    return grouped;
+  if (appliedCount > 0) {
+    return calculateScenarioStandings(groups, inputs, "actual");
   }
 
-  const initial = createInitialScenarioMatchInputs(groups);
-  const actual = applyStoredActualResultsToInputs(initial, apiMatches, sourcedItems).inputs.filter((input) => input.status === "actual");
-  return calculateScenarioStandings(groups, actual, "actual");
+  if (standingRowsHaveUsableResults(apiStandings)) {
+    return mapApiStandingsWithMissingTeams(groups, apiStandings);
+  }
+
+  return calculateScenarioStandings(groups, [], "actual");
 }
