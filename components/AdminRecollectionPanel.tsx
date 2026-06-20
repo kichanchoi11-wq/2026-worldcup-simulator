@@ -345,6 +345,22 @@ export default function AdminRecollectionPanel({ onSnapshotChange }: { onSnapsho
           </div>
           <p className="mt-3 text-sm leading-6 text-violet-50/75">{aiStatus.modelSelectionMessage}</p>
           <p className="mt-1 text-sm leading-6 text-violet-50/65">{aiStatus.message}</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {(aiStatus.providerStates ?? []).map((provider) => (
+              <div key={`${provider.provider}-${provider.model}-${provider.apiKeyFingerprint ?? "no-key"}`} className="rounded border border-white/10 bg-pitch-900/70 p-3 text-xs leading-5 text-violet-50/70">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={provider.status === "available" ? "success" : provider.status === "cooling_down" || provider.status === "quota_exceeded" || provider.status === "soft_limit_active" ? "warning" : "danger"}>
+                    {provider.provider}
+                  </Badge>
+                  <span className="font-black text-white">{provider.model}</span>
+                </div>
+                <p className="mt-2">상태 {provider.status} · 실패 분류 {provider.lastFailureKind ?? "없음"}</p>
+                <p>실제 HTTP {provider.lastActualHttpAt ? "예" : "아니오"} · HTTP {provider.lastHttpStatus ?? "없음"} · 마지막 시도 {formatDate(provider.lastAttemptAt)}</p>
+                <p>cooldown 만료 {formatDate(provider.cooldownUntil)} · 사유 {provider.cooldownReason ?? provider.lastFailureMessage ?? "없음"}</p>
+                <p>health-check {provider.healthCheckStatus ?? "대기"} · {provider.healthCheckMessage ?? "아직 없음"}</p>
+              </div>
+            ))}
+          </div>
           {aiStatus.logs.length > 0 ? (
             <ul className="mt-3 grid gap-2 text-xs text-violet-50/70 md:grid-cols-2">
               {aiStatus.logs.slice(0, 4).map((log) => (

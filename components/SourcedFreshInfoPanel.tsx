@@ -319,8 +319,20 @@ function itemDisplayTitle(item: SourcedFootballInfo) {
   return userVisibleText(item.title, `${replaceKnownEnglishNames(item.targetName)} ${categoryLabels[item.category]}`);
 }
 
+function displaySourcesForItem(item: SourcedFootballInfo) {
+  const keywords = categoryKeywords[item.category] ?? [];
+  if (keywords.length === 0 || ["match_result", "match_status", "venue", "match_review", "lineup", "formation", "tactics"].includes(item.category)) {
+    return item.sources;
+  }
+
+  const itemText = [item.title, item.summary, item.value].filter(Boolean).join(" ");
+  const itemMatches = textMatchesKeywords(itemText, keywords) && !hasGenericResultSignal(itemText);
+  const matchedSources = item.sources.filter((source) => textMatchesKeywords(source.title, keywords));
+  return itemMatches ? (matchedSources.length > 0 ? matchedSources : item.sources) : matchedSources;
+}
+
 function hasSourceBackedItem(items: SourcedFootballInfo[]) {
-  return items.some((item) => item.sources.length > 0 && item.generatedBy === "search");
+  return items.some((item) => displaySourcesForItem(item).length > 0 && item.generatedBy === "search");
 }
 
 function hasScore(homeScore: number | null | undefined, awayScore: number | null | undefined) {
@@ -607,10 +619,10 @@ function StructuredCardsGrid({ cards }: { cards: StructuredInfoCard[] }) {
           <p className={`mt-3 rounded border p-2 text-xs leading-5 ${card.inferenceOnly ? "border-amber-300/25 bg-amber-400/10 text-amber-50/82" : "border-emerald-300/25 bg-emerald-400/10 text-emerald-50/82"}`}>
             {card.inferenceOnly ? "출처 없는 AI/내부 분석은 확정 사실이 아니라 참고 분석으로 분리됩니다." : "출처가 있는 항목은 출처 원문 확인이 가능한 참고 정보로 반영됩니다."}
           </p>
-          {card.items.flatMap((item) => item.sources).length > 0 ? (
+          {card.items.flatMap((item) => displaySourcesForItem(item)).length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               {card.items
-                .flatMap((item) => item.sources.map((source) => ({ ...source, itemId: item.id })))
+                .flatMap((item) => displaySourcesForItem(item).map((source) => ({ ...source, itemId: item.id })))
                 .slice(0, 3)
                 .map((source) =>
                   source.url ? (
@@ -716,7 +728,7 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
     );
   }
 
-  const sourceBacked = reflectedItems.filter((item) => item.sources.length > 0 && item.generatedBy === "search").length;
+  const sourceBacked = reflectedItems.filter((item) => displaySourcesForItem(item).length > 0 && item.generatedBy === "search").length;
   const inferred = reflectedItems.length - sourceBacked;
 
   return (
@@ -751,7 +763,9 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
               <Badge tone="neutral">{group.items.length}건</Badge>
             </div>
             <div className="mt-3 space-y-3">
-              {group.items.slice(0, 6).map((item) => (
+              {group.items.slice(0, 6).map((item) => {
+                const displaySources = displaySourcesForItem(item);
+                return (
                 <article key={item.id} className="rounded border border-white/10 bg-white/[0.04] p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={statusTone(item)}>{statusLabel(item)}</Badge>
@@ -764,9 +778,9 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
                   <p className="mt-2 text-xs text-white/45">
                     신뢰도: {confidenceLabel(item)} · 업데이트: {formatDate(item.updatedAt)}
                   </p>
-                  {item.sources.length > 0 ? (
+                  {displaySources.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      {item.sources.slice(0, 3).map((source) =>
+                      {displaySources.slice(0, 3).map((source) =>
                         source.url ? (
                           <a
                             key={`${item.id}-${source.title}-${source.url}`}
@@ -786,11 +800,12 @@ export default function SourcedFreshInfoPanel(props: SourcedFreshInfoPanelProps)
                     </div>
                   ) : (
                     <p className="mt-2 rounded border border-amber-300/25 bg-amber-400/10 p-2 text-xs leading-5 text-amber-50/80">
-                      출처 없는 AI/내부 분석이므로 확정 사실로 표시하지 않습니다.
+                      이 카테고리에 직접 맞는 출처가 없어 확정 사실로 표시하지 않습니다.
                     </p>
                   )}
                 </article>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}

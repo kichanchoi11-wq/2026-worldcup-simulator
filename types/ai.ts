@@ -8,7 +8,30 @@
 export type AIAnalysisStatus = "success" | "partial" | "fallback" | "cache" | "failed";
 export type AIProviderName = "groq" | "openrouter" | "cache" | "rule-based";
 export type RuntimeProviderName = "groq" | "openrouter" | "tavily" | "exa";
-export type ProviderRuntimeStatus = "available" | "cooling_down" | "quota_exceeded" | "disabled";
+export type ProviderRuntimeStatus =
+  | "available"
+  | "cooling_down"
+  | "quota_exceeded"
+  | "disabled"
+  | "soft_limit_active"
+  | "auth_error"
+  | "model_not_found"
+  | "network_error"
+  | "payload_too_large"
+  | "invalid_response"
+  | "not_attempted";
+export type ProviderFailureKind =
+  | "rate_limited"
+  | "quota_exceeded"
+  | "cooldown_active"
+  | "soft_limit_active"
+  | "auth_error"
+  | "model_not_found"
+  | "network_error"
+  | "payload_too_large"
+  | "invalid_response"
+  | "not_attempted"
+  | "unknown";
 
 export type AIErrorType =
   | "payload_too_large_before_request"
@@ -43,10 +66,21 @@ export type AIProviderRuntimeState = {
   status: ProviderRuntimeStatus;
   model: string;
   enabled: boolean;
+  apiKeyFingerprint: string | null;
   usedToday: number;
   dailySoftLimit: number | null;
   rpmSoftLimit: number | null;
+  lastAttempted: boolean;
+  lastAttemptAt: string | null;
+  lastActualHttpAt: string | null;
+  lastHttpStatus: number | null;
+  lastFailureKind: ProviderFailureKind | null;
   cooldownUntil: string | null;
+  cooldownStartedAt: string | null;
+  cooldownReason: string | null;
+  healthCheckAt: string | null;
+  healthCheckStatus: "ok" | "failed" | "skipped" | null;
+  healthCheckMessage: string | null;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
   lastFailureMessage: string | null;

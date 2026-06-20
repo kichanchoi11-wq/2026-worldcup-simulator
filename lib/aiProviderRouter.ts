@@ -1,4 +1,13 @@
-import { isRuntimeProviderUsable, recordProviderFailure, recordProviderSuccess } from "@/lib/providerRuntimeState";
+import {
+  getRuntimeProviderAvailability,
+  getRuntimeProviderState,
+  parseRetryAfterMs,
+  recordProviderAttempt,
+  recordProviderFailure,
+  recordProviderHealthCheck,
+  recordProviderSkipped,
+  recordProviderSuccess
+} from "@/lib/providerRuntimeState";
 import type { AIErrorType, AIProviderName } from "@/types/ai";
 
 type ChatProvider = "groq" | "openrouter";
@@ -49,18 +58,18 @@ export function getMaxAIPayloadBytes() {
 
 export function getAITargetPayloadBytes() {
   const value = Number(process.env.AI_TARGET_PAYLOAD_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : 22_000;
+  return Number.isFinite(value) && value > 0 ? value : 18_000;
 }
 
 export function getAIChunkMaxPayloadBytes() {
   const value = Number(process.env.AI_CHUNK_MAX_PAYLOAD_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : 20_000;
+  return Number.isFinite(value) && value > 0 ? value : 16_000;
 }
 
 export function getAIHardPayloadBytes() {
   const value = Number(process.env.AI_HARD_PAYLOAD_BYTES);
   const maxPayloadBytes = getMaxAIPayloadBytes();
-  return Number.isFinite(value) && value > 0 ? value : Math.min(maxPayloadBytes, 28_000);
+  return Number.isFinite(value) && value > 0 ? value : Math.min(maxPayloadBytes, 24_000);
 }
 
 export function getAIProviderTimeoutMs(provider: ChatProvider = "groq") {
@@ -104,8 +113,20 @@ function buildBody(model: string, prompt: string) {
       { role: "user", content: prompt }
     ],
     temperature: 0.2,
-    max_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 700,
+    max_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 500,
     response_format: { type: "json_object" }
+  });
+}
+
+function buildHealthCheckBody(model: string) {
+  return JSON.stringify({
+    model,
+    messages: [
+      { role: "system", content: "You are a health-check endpoint. Respond with exactly OK." },
+      { role: "user", content: "Respond with exactly: OK" }
+    ],
+    temperature: 0,
+    max_tokens: 8
   });
 }
 
@@ -165,25 +186,51 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
     };
   }
 
-  if (!isRuntimeProviderUsable(provider)) {
+  const availability = getRuntimeProviderAvailability(provider);
+  if (!availability.usable) {
+    const reason = availability.reason ?? "unknown";
+    recordProviderSkipped(provider, reason, availability.message);
     return {
       ok: false,
       provider,
       model: config.model,
-      message: `${provider} provider가 cooldown 또는 soft limit 상태라 호출을 건너뜁니다.`,
+      message: `${provider} provider 호출 보류: ${reason} · ${availability.message}`,
       httpStatus: null,
       payloadBytes,
       fallbackUsed: provider !== "groq",
       retryCount,
       timeout: false,
-      errorType: "provider_rate_limited"
+      errorType: reason === "soft_limit_active" || reason === "cooldown_active" ? "provider_rate_limited" : "provider_auth_error"
     };
+  }
+
+  const previousState = getRuntimeProviderState(provider);
+  if (
+    (previousState.lastFailureKind === "rate_limited" || previousState.lastFailureKind === "quota_exceeded") &&
+    previousState.healthCheckStatus !== "ok"
+  ) {
+    const health = await runProviderHealthCheck(provider);
+    if (!health.ok) {
+      return {
+        ok: false,
+        provider,
+        model: config.model,
+        message: health.message,
+        httpStatus: health.httpStatus,
+        payloadBytes,
+        fallbackUsed: provider !== "groq",
+        retryCount,
+        timeout: false,
+        errorType: health.httpStatus === 429 ? "provider_rate_limited" : "provider_network_error"
+      };
+    }
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getAIProviderTimeoutMs(provider));
 
   try {
+    recordProviderAttempt(provider, true, null);
     const response = await withProviderQueue(() => fetch(config.url, {
       method: "POST",
       headers: {
@@ -198,7 +245,10 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
 
     if (!response.ok) {
       const message = `${provider} 응답 오류(${response.status})${text ? `: ${text.slice(0, 240)}` : ""}`;
-      recordProviderFailure(provider, response.status, message);
+      recordProviderFailure(provider, response.status, message, {
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+        actualHttp: true
+      });
       return {
         ok: false,
         provider,
@@ -222,7 +272,23 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
 
     const data = JSON.parse(text) as unknown;
     const content = extractText(data);
-    recordProviderSuccess(provider);
+    if (!content) {
+      const message = `${provider} 응답에서 content를 찾지 못했습니다.`;
+      recordProviderFailure(provider, response.status, message, { actualHttp: true });
+      return {
+        ok: false,
+        provider,
+        model: config.model,
+        message,
+        httpStatus: response.status,
+        payloadBytes,
+        fallbackUsed: provider !== "groq",
+        retryCount,
+        timeout: false,
+        errorType: "invalid_response"
+      };
+    }
+    recordProviderSuccess(provider, response.status);
     return {
       ok: true,
       provider,
@@ -242,7 +308,7 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       : error instanceof Error
         ? `${provider} 호출 실패: ${error.message}`
         : `${provider} 호출 실패`;
-    recordProviderFailure(provider, null, message);
+    recordProviderFailure(provider, null, message, { actualHttp: false });
     return {
       ok: false,
       provider,
@@ -255,6 +321,50 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       timeout: timeoutError,
       errorType: timeoutError ? "provider_timeout" : "provider_network_error"
     };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function runProviderHealthCheck(provider: ChatProvider): Promise<{ ok: boolean; httpStatus: number | null; message: string }> {
+  const config = providerConfig(provider);
+  if (!config.apiKey) {
+    return { ok: false, httpStatus: null, message: `${provider} health-check 생략: API 키 없음` };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.min(getAIProviderTimeoutMs(provider), 8_000));
+
+  try {
+    recordProviderAttempt(provider, true, null);
+    const response = await withProviderQueue(() => fetch(config.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+        ...config.headers
+      },
+      body: buildHealthCheckBody(config.model),
+      signal: controller.signal
+    }));
+    const text = await response.text();
+    if (!response.ok) {
+      const message = `${provider} health-check 실패(${response.status})${text ? `: ${text.slice(0, 180)}` : ""}`;
+      recordProviderFailure(provider, response.status, message, {
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+        actualHttp: true
+      });
+      recordProviderHealthCheck(provider, false, response.status, message);
+      return { ok: false, httpStatus: response.status, message };
+    }
+
+    recordProviderHealthCheck(provider, true, response.status, `${provider} health-check OK`);
+    return { ok: true, httpStatus: response.status, message: `${provider} health-check OK` };
+  } catch (error) {
+    const message = error instanceof Error ? `${provider} health-check 오류: ${error.message}` : `${provider} health-check 오류`;
+    recordProviderFailure(provider, null, message, { actualHttp: false });
+    recordProviderHealthCheck(provider, false, null, message);
+    return { ok: false, httpStatus: null, message };
   } finally {
     clearTimeout(timeout);
   }

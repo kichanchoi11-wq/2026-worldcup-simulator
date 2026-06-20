@@ -1,7 +1,11 @@
 import {
+  getRuntimeProviderAvailability,
   getRuntimeProviderState,
   isRuntimeProviderUsable,
+  parseRetryAfterMs,
+  recordProviderAttempt,
   recordProviderFailure,
+  recordProviderSkipped,
   recordProviderSuccess
 } from "@/lib/providerRuntimeState";
 import type { FreshInfoSource } from "@/types/freshInfo";
@@ -190,11 +194,14 @@ async function callSearchProvider(provider: SearchProvider, query: string, retry
     };
   }
 
-  if (!isRuntimeProviderUsable(provider)) {
+  const availability = getRuntimeProviderAvailability(provider);
+  if (!availability.usable) {
+    const reason = availability.reason ?? "unknown";
+    recordProviderSkipped(provider, reason, availability.message);
     return {
       ok: false,
       provider,
-      message: `${provider} 검색 provider가 cooldown 또는 soft limit 상태라 건너뜁니다.`,
+      message: `${provider} 검색 provider 호출 보류: ${reason} · ${availability.message}`,
       sources: [],
       searchUsed: false,
       searchedAt,
@@ -208,6 +215,7 @@ async function callSearchProvider(provider: SearchProvider, query: string, retry
   const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
 
   try {
+    recordProviderAttempt(provider, true, null);
     const response = await fetch(provider === "tavily" ? "https://api.tavily.com/search" : "https://api.exa.ai/search", {
       method: "POST",
       headers: {
@@ -224,7 +232,10 @@ async function callSearchProvider(provider: SearchProvider, query: string, retry
 
     if (!response.ok) {
       const message = `${provider} 검색 응답 오류(${response.status})${rawText ? `: ${rawText.slice(0, 240)}` : ""}`;
-      recordProviderFailure(provider, response.status, message);
+      recordProviderFailure(provider, response.status, message, {
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+        actualHttp: true
+      });
       return {
         ok: false,
         provider,
@@ -240,7 +251,7 @@ async function callSearchProvider(provider: SearchProvider, query: string, retry
     }
 
     const sources = normalizeSources(provider, raw, searchedAt);
-    recordProviderSuccess(provider);
+    recordProviderSuccess(provider, response.status);
     return {
       ok: true,
       provider,
@@ -260,7 +271,7 @@ async function callSearchProvider(provider: SearchProvider, query: string, retry
       : error instanceof Error
         ? `${provider} 검색 실패: ${error.message}`
         : `${provider} 검색 실패`;
-    recordProviderFailure(provider, null, message);
+    recordProviderFailure(provider, null, message, { actualHttp: false });
     return {
       ok: false,
       provider,
