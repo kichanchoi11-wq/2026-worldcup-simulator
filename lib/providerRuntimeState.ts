@@ -106,6 +106,8 @@ function publicStatus(state: AIProviderRuntimeState): ProviderRuntimeStatus {
   if (state.lastFailureKind === "auth_error") return "auth_error";
   if (state.lastFailureKind === "model_not_found") return "model_not_found";
   if (state.lastFailureKind === "network_error") return "network_error";
+  if (state.lastFailureKind === "request_aborted") return "request_aborted";
+  if (state.lastFailureKind === "timeout") return "timeout";
   if (state.lastFailureKind === "payload_too_large") return "payload_too_large";
   if (state.lastFailureKind === "invalid_response") return "invalid_response";
   return "available";
@@ -144,7 +146,9 @@ export function classifyProviderFailure(status: number | null, message: string):
   if (status === 404 || lower.includes("model_not_found") || lower.includes("model not found")) return "model_not_found";
   if (lower.includes("payload") && (lower.includes("too large") || lower.includes("hard limit") || lower.includes("초과"))) return "payload_too_large";
   if (lower.includes("invalid response") || lower.includes("json")) return "invalid_response";
-  if (status === null || status >= 500 || lower.includes("timeout") || lower.includes("network") || lower.includes("fetch failed")) return "network_error";
+  if (lower.includes("abort") || lower.includes("operation was aborted") || lower.includes("request_aborted")) return "request_aborted";
+  if (lower.includes("timeout") || lower.includes("timed out")) return "timeout";
+  if (status === null || status >= 500 || lower.includes("network") || lower.includes("fetch failed")) return "network_error";
   return "unknown";
 }
 
@@ -305,7 +309,7 @@ export function recordProviderHealthCheck(provider: RuntimeProviderName, ok: boo
     healthCheckStatus: ok ? "ok" : "failed",
     healthCheckMessage: message.slice(0, 500),
     lastHttpStatus: status ?? current.lastHttpStatus,
-    lastActualHttpAt: new Date().toISOString()
+    lastActualHttpAt: status === null ? current.lastActualHttpAt : new Date().toISOString()
   });
 }
 

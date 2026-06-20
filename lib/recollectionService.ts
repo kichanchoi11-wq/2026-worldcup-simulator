@@ -342,11 +342,11 @@ async function collectAdminAIAnalyses(input: {
     directResults: directResources.map((resource) => resource.result),
     cardRecords: cardRecords.slice(0, 40)
   };
-  const analyses: Array<Promise<AIAnalysisRecord>> = [];
+  const analyses: Array<() => Promise<AIAnalysisRecord>> = [];
 
   if (scope === "ai-refresh-summary" || scope === "ai-all" || scope === "all") {
     analyses.push(
-      createAIAnalysis({
+      () => createAIAnalysis({
         kind: "refresh-summary",
         title: "관리자 새로고침 결과 요약",
         cacheKey: `admin-refresh-summary-${scope}-${timestampKey}`,
@@ -366,7 +366,7 @@ async function collectAdminAIAnalyses(input: {
 
   if (korea && (scope === "ai-coach-tactics" || scope === "ai-all" || scope === "all")) {
     analyses.push(
-      createAIAnalysis({
+      () => createAIAnalysis({
         kind: "coach-tactics",
         title: "대한민국 감독 전술 관리자 재분석",
         cacheKey: `admin-korea-coach-tactics-${scope}-${timestampKey}`,
@@ -391,7 +391,7 @@ async function collectAdminAIAnalyses(input: {
 
   if (korea && (scope === "ai-formations" || scope === "ai-all" || scope === "all")) {
     analyses.push(
-      createAIAnalysis({
+      () => createAIAnalysis({
         kind: "formation",
         title: "대한민국 포메이션 관리자 재분석",
         cacheKey: `admin-korea-formation-${scope}-${timestampKey}`,
@@ -415,7 +415,7 @@ async function collectAdminAIAnalyses(input: {
 
   if (scope === "ai-risks" || scope === "ai-all" || scope === "all") {
     analyses.push(
-      createAIAnalysis({
+      () => createAIAnalysis({
         kind: "risk-summary",
         title: "관리자 카드·부상·징계 설명",
         cacheKey: `admin-risk-summary-${scope}-${timestampKey}`,
@@ -436,7 +436,12 @@ async function collectAdminAIAnalyses(input: {
     );
   }
 
-  return Promise.all(analyses);
+  const records: AIAnalysisRecord[] = [];
+  for (const createAnalysis of analyses) {
+    records.push(await createAnalysis());
+  }
+
+  return records;
 }
 
 function deriveJobStatus(results: RecollectionResourceResult[], updatedCount: number): RecollectionJobStatus {

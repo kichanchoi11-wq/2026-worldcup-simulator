@@ -297,7 +297,7 @@ export async function runLatestInfoSearch(query: string): Promise<LatestInfoSear
       ok: false,
       provider: null,
       message: isLatestInfoSearchConfigured()
-        ? "Tavily/Exa 검색 provider가 cooldown 또는 soft limit 상태입니다."
+        ? "Tavily/Exa 검색 provider가 현재 호출 가능하지 않습니다. 실제 429/quota가 아니면 다음 검색에서 다시 시도합니다."
         : "TAVILY_API_KEY와 EXA_API_KEY가 없어 최신 정보 검색을 실행할 수 없습니다.",
       sources: [],
       searchUsed: false,

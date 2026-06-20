@@ -1,4 +1,5 @@
 import {
+  classifyProviderFailure,
   getRuntimeProviderAvailability,
   getRuntimeProviderState,
   parseRetryAfterMs,
@@ -8,7 +9,7 @@ import {
   recordProviderSkipped,
   recordProviderSuccess
 } from "@/lib/providerRuntimeState";
-import type { AIErrorType, AIProviderName } from "@/types/ai";
+import type { AIErrorType, AIProviderName, ProviderFailureKind } from "@/types/ai";
 
 type ChatProvider = "groq" | "openrouter";
 
@@ -53,23 +54,23 @@ function envNumber(name: string, fallback: number) {
 
 export function getMaxAIPayloadBytes() {
   const value = Number(process.env.AI_MAX_PAYLOAD_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : 28_000;
+  return Number.isFinite(value) && value > 0 ? value : 24_000;
 }
 
 export function getAITargetPayloadBytes() {
   const value = Number(process.env.AI_TARGET_PAYLOAD_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : 18_000;
+  return Number.isFinite(value) && value > 0 ? value : 16_000;
 }
 
 export function getAIChunkMaxPayloadBytes() {
   const value = Number(process.env.AI_CHUNK_MAX_PAYLOAD_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : 16_000;
+  return Number.isFinite(value) && value > 0 ? value : 14_000;
 }
 
 export function getAIHardPayloadBytes() {
   const value = Number(process.env.AI_HARD_PAYLOAD_BYTES);
   const maxPayloadBytes = getMaxAIPayloadBytes();
-  return Number.isFinite(value) && value > 0 ? value : Math.min(maxPayloadBytes, 24_000);
+  return Number.isFinite(value) && value > 0 ? value : Math.min(maxPayloadBytes, 22_000);
 }
 
 export function getAIProviderTimeoutMs(provider: ChatProvider = "groq") {
@@ -113,7 +114,7 @@ function buildBody(model: string, prompt: string) {
       { role: "user", content: prompt }
     ],
     temperature: 0.2,
-    max_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 500,
+    max_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS) || 450,
     response_format: { type: "json_object" }
   });
 }
@@ -149,7 +150,7 @@ let lastProviderRequestAt = 0;
 
 async function withProviderQueue<T>(task: () => Promise<T>): Promise<T> {
   const queued = providerQueue.catch(() => undefined).then(async () => {
-    const minIntervalMs = envNumber("AI_PROVIDER_MIN_INTERVAL_MS", 5_000);
+    const minIntervalMs = envNumber("AI_MIN_REQUEST_INTERVAL_MS", envNumber("AI_PROVIDER_MIN_INTERVAL_MS", 5_000));
     const elapsed = Date.now() - lastProviderRequestAt;
     if (elapsed < minIntervalMs) {
       await new Promise((resolve) => setTimeout(resolve, minIntervalMs - elapsed));
@@ -164,6 +165,30 @@ async function withProviderQueue<T>(task: () => Promise<T>): Promise<T> {
   );
 
   return queued;
+}
+
+function errorTypeFromFailure(kind: ProviderFailureKind, status: number | null): AIErrorType {
+  if (kind === "rate_limited" || kind === "quota_exceeded" || kind === "cooldown_active" || kind === "soft_limit_active") {
+    return kind === "quota_exceeded" ? "provider_quota_exceeded" : "provider_rate_limited";
+  }
+  if (kind === "auth_error") return "provider_auth_error";
+  if (kind === "model_not_found") return "model_not_found";
+  if (kind === "payload_too_large") return "payload_too_large_before_request";
+  if (kind === "invalid_response") return "invalid_response";
+  if (kind === "request_aborted") return "provider_aborted";
+  if (kind === "timeout") return "provider_timeout";
+  if (status === 401 || status === 403) return "provider_auth_error";
+  if (status === 404) return "model_not_found";
+  if (status === 429) return "provider_rate_limited";
+  return "provider_network_error";
+}
+
+function shouldBlockAfterHealthCheck(kind: ProviderFailureKind | null, status: number | null) {
+  return kind === "rate_limited" || kind === "quota_exceeded" || kind === "auth_error" || kind === "model_not_found" || status === 401 || status === 403 || status === 404 || status === 429;
+}
+
+function providerAbortMessage(provider: ChatProvider, timeoutMs: number, scope: "health-check" | "analysis") {
+  return `${provider} ${scope} request_aborted: AbortController timeout ${timeoutMs}ms`;
 }
 
 async function callProvider(provider: ChatProvider, prompt: string, retryCount: number): Promise<AITextResult> {
@@ -210,7 +235,7 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
     previousState.healthCheckStatus !== "ok"
   ) {
     const health = await runProviderHealthCheck(provider);
-    if (!health.ok) {
+    if (!health.ok && shouldBlockAfterHealthCheck(health.failureKind ?? null, health.httpStatus)) {
       return {
         ok: false,
         provider,
@@ -220,14 +245,15 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
         payloadBytes,
         fallbackUsed: provider !== "groq",
         retryCount,
-        timeout: false,
-        errorType: health.httpStatus === 429 ? "provider_rate_limited" : "provider_network_error"
+        timeout: health.failureKind === "timeout",
+        errorType: errorTypeFromFailure(health.failureKind ?? "unknown", health.httpStatus)
       };
     }
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), getAIProviderTimeoutMs(provider));
+  const timeoutMs = getAIProviderTimeoutMs(provider);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     recordProviderAttempt(provider, true, null);
@@ -245,6 +271,7 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
 
     if (!response.ok) {
       const message = `${provider} 응답 오류(${response.status})${text ? `: ${text.slice(0, 240)}` : ""}`;
+      const failureKind = classifyProviderFailure(response.status, message);
       recordProviderFailure(provider, response.status, message, {
         retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
         actualHttp: true
@@ -259,14 +286,7 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
         fallbackUsed: provider !== "groq",
         retryCount,
         timeout: false,
-        errorType:
-          response.status === 401 || response.status === 403
-            ? "provider_auth_error"
-            : response.status === 404
-              ? "model_not_found"
-              : response.status === 429
-                ? "provider_rate_limited"
-                : "provider_network_error"
+        errorType: errorTypeFromFailure(failureKind, response.status)
       };
     }
 
@@ -302,12 +322,13 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       errorType: null
     };
   } catch (error) {
-    const timeoutError = error instanceof Error && error.name === "AbortError";
-    const message = timeoutError
-      ? `${provider} 호출 timeout`
+    const aborted = error instanceof Error && error.name === "AbortError";
+    const message = aborted
+      ? providerAbortMessage(provider, timeoutMs, "analysis")
       : error instanceof Error
         ? `${provider} 호출 실패: ${error.message}`
         : `${provider} 호출 실패`;
+    const failureKind = classifyProviderFailure(null, message);
     recordProviderFailure(provider, null, message, { actualHttp: false });
     return {
       ok: false,
@@ -318,22 +339,28 @@ async function callProvider(provider: ChatProvider, prompt: string, retryCount: 
       payloadBytes,
       fallbackUsed: provider !== "groq",
       retryCount,
-      timeout: timeoutError,
-      errorType: timeoutError ? "provider_timeout" : "provider_network_error"
+      timeout: failureKind === "timeout" || aborted,
+      errorType: errorTypeFromFailure(failureKind, null)
     };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function runProviderHealthCheck(provider: ChatProvider): Promise<{ ok: boolean; httpStatus: number | null; message: string }> {
+function getProviderHealthCheckTimeoutMs(provider: ChatProvider) {
+  const envName = provider === "groq" ? "GROQ_HEALTHCHECK_TIMEOUT_MS" : "OPENROUTER_HEALTHCHECK_TIMEOUT_MS";
+  return envNumber(envName, provider === "openrouter" ? 15_000 : 8_000);
+}
+
+async function runProviderHealthCheck(provider: ChatProvider): Promise<{ ok: boolean; httpStatus: number | null; message: string; failureKind?: ProviderFailureKind | null }> {
   const config = providerConfig(provider);
   if (!config.apiKey) {
-    return { ok: false, httpStatus: null, message: `${provider} health-check 생략: API 키 없음` };
+    return { ok: false, httpStatus: null, message: `${provider} health-check 생략: API 키 없음`, failureKind: "auth_error" };
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.min(getAIProviderTimeoutMs(provider), 8_000));
+  const timeoutMs = getProviderHealthCheckTimeoutMs(provider);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     recordProviderAttempt(provider, true, null);
@@ -355,16 +382,22 @@ async function runProviderHealthCheck(provider: ChatProvider): Promise<{ ok: boo
         actualHttp: true
       });
       recordProviderHealthCheck(provider, false, response.status, message);
-      return { ok: false, httpStatus: response.status, message };
+      return { ok: false, httpStatus: response.status, message, failureKind: classifyProviderFailure(response.status, message) };
     }
 
     recordProviderHealthCheck(provider, true, response.status, `${provider} health-check OK`);
-    return { ok: true, httpStatus: response.status, message: `${provider} health-check OK` };
+    return { ok: true, httpStatus: response.status, message: `${provider} health-check OK`, failureKind: null };
   } catch (error) {
-    const message = error instanceof Error ? `${provider} health-check 오류: ${error.message}` : `${provider} health-check 오류`;
+    const aborted = error instanceof Error && error.name === "AbortError";
+    const message = aborted
+      ? providerAbortMessage(provider, timeoutMs, "health-check")
+      : error instanceof Error
+        ? `${provider} health-check 오류: ${error.message}`
+        : `${provider} health-check 오류`;
+    const failureKind = classifyProviderFailure(null, message);
     recordProviderFailure(provider, null, message, { actualHttp: false });
     recordProviderHealthCheck(provider, false, null, message);
-    return { ok: false, httpStatus: null, message };
+    return { ok: false, httpStatus: null, message, failureKind };
   } finally {
     clearTimeout(timeout);
   }

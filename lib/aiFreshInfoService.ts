@@ -148,15 +148,112 @@ function trimSummary(value: string) {
   return cleaned.length > 420 ? `${cleaned.slice(0, 420)}...` : cleaned;
 }
 
+function splitEvidenceLines(value: string) {
+  return value
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?。！？])\s+|[;\n]+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isGenericResultOnly(value: string) {
+  return /(\d{1,2}\s*[-:]\s*\d{1,2})|defeated|beat|won|ended with|victory|승리|이겼|꺾었|경기 결과|경기종료|득점/i.test(value);
+}
+
+function categorySpecificLines(need: FreshInfoNeed, summary: string, sources: FreshInfoSource[]) {
+  const keywords = needSearchTerms[need];
+  const candidates = [
+    ...splitEvidenceLines(summary),
+    ...sources.map((source) => source.name)
+  ];
+  const categoryAllowsResult = need === "actualResult" || need === "matchStatus" || need === "matchReview" || need === "predictionComparison";
+
+  return candidates
+    .filter((line) => containsAny(line, keywords))
+    .filter((line) => categoryAllowsResult || !isGenericResultOnly(line))
+    .filter((line, index, array) => array.indexOf(line) === index)
+    .slice(0, 3);
+}
+
+function existingDataRecord(request: AIFreshInfoRequest) {
+  return request.existingData && typeof request.existingData === "object" ? (request.existingData as Record<string, unknown>) : {};
+}
+
+function nestedRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function arrayField<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function existingFitnessSummary(request: AIFreshInfoRequest) {
+  const existing = existingDataRecord(request);
+  const pageData = nestedRecord(existing.pageData);
+  const profiles = arrayField<Record<string, unknown>>(pageData.teamFitnessProfiles);
+  const teamNames = request.teamNames ?? [];
+
+  if (profiles.length === 0 && teamNames.length === 0) {
+    return "휴식일·이동 거리·일정 밀도는 저장된 일정 데이터가 충분할 때 내부 계산으로 표시합니다.";
+  }
+
+  const lines = profiles.length > 0
+    ? profiles.map((profile) => {
+        const team = String(profile.teamName ?? "팀 확인 필요");
+        const restDays = typeof profile.restDays === "number" ? `${profile.restDays}일` : "확인 필요";
+        const fatigue = String(profile.fatigueLevel ?? "확인 필요");
+        const travel = String(profile.travelLoad ?? "확인 필요");
+        return `${team}: 저장 일정 기준 휴식 ${restDays}, 피로도 ${fatigue}, 이동 부담 ${travel}`;
+      })
+    : teamNames.map((team) => `${team}: 저장된 직전 경기 일정이 부족해 휴식일 계산은 확인 필요`);
+
+  return lines.slice(0, 3).join(" / ");
+}
+
+function internalFitnessSource(checkedAt: string): FreshInfoSource {
+  return {
+    name: "일정 기반 내부 계산",
+    sourceType: "내부 계산",
+    checkedAt
+  };
+}
+
 function sourceMatchesNeed(source: FreshInfoSource, summary: string, need: FreshInfoNeed) {
   if (coreNeeds.includes(need) || lineupNeeds.includes(need)) {
     return true;
   }
-  return containsAny([source.name, summary].join(" "), needSearchTerms[need]);
+  const evidenceText = [source.name, summary].join(" ");
+  if (!containsAny(evidenceText, needSearchTerms[need])) {
+    return false;
+  }
+  return !isGenericResultOnly(evidenceText) || need === "actualResult" || need === "matchStatus" || need === "matchReview";
 }
 
-function itemValueForNeed(need: FreshInfoNeed, sources: FreshInfoSource[], summary: string) {
+function itemValueForNeed(need: FreshInfoNeed, sources: FreshInfoSource[], summary: string, request: AIFreshInfoRequest) {
+  if (need === "fitness" && sources.length === 0) {
+    return `${existingFitnessSummary(request)}. 검색 출처가 부족하므로 확정 컨디션이 아니라 일정 기반 참고 변수입니다.`;
+  }
+
   if (sources.length === 0) return needLackReasons[need];
+
+  const lines = categorySpecificLines(need, summary, sources);
+  if (lines.length > 0) {
+    return `${categoryFromNeed(need)} 전용 검색에서 해당 항목과 직접 연결되는 문장을 확인했습니다: ${trimSummary(lines.join(" / "))}`;
+  }
+
+  if (need === "cards") {
+    return "카드 관련 출처는 확인했지만 선수명·팀·카드 종류·시간까지 정규화할 근거가 부족합니다. 확정 카드 이벤트가 아니라 확인 대상으로 표시합니다.";
+  }
+  if (need === "injuries") {
+    return "부상 관련 출처는 확인했지만 선수별 부상명·출전 가능성까지 확정할 근거가 부족합니다. 결장으로 단정하지 않고 확인 대상으로 표시합니다.";
+  }
+  if (need === "suspensions") {
+    return "징계 관련 출처는 확인했지만 경고 누적·출전 금지 공지까지 확정할 근거가 부족합니다. 공식 징계 발표 확인 전까지 확인 대상으로 표시합니다.";
+  }
+  if (need === "fitness") {
+    return `${existingFitnessSummary(request)}. 검색 출처 요약은 체력 참고 정보로만 연결합니다: ${trimSummary(summary)}`;
+  }
+
   return `${categoryFromNeed(need)} 전용 검색에서 확인한 출처 기반 참고 정보입니다. 확정 사실은 출처 원문 기준으로 검토해야 하며, 현재 요약은 다음 근거에 기반합니다: ${trimSummary(summary)}`;
 }
 
@@ -164,15 +261,16 @@ function createSearchBackedItems(request: AIFreshInfoRequest, needs: FreshInfoNe
   return needs.map((need) => {
     const category = categoryFromNeed(need);
     const matchedSources = sources.filter((source) => sourceMatchesNeed(source, summary, need));
-    const sourceNames = defaultSourceNames(matchedSources);
-    const sourceUrls = defaultSourceUrls(matchedSources);
+    const effectiveSources = need === "fitness" && matchedSources.length === 0 ? [internalFitnessSource(searchedAt)] : matchedSources;
+    const sourceNames = defaultSourceNames(effectiveSources);
+    const sourceUrls = defaultSourceUrls(effectiveSources);
     const status: FreshInfoItem["status"] =
       sourceNames.length >= 2 ? "복수 출처 확인" : sourceNames.length === 1 ? "추정" : "추가 확인 필요";
 
     return {
       category,
       title: `${targetLabel(request)} ${category}`,
-      value: itemValueForNeed(need, matchedSources, summary),
+      value: itemValueForNeed(need, matchedSources, summary, request),
       status,
       sourceNames,
       sourceUrls,
@@ -196,6 +294,9 @@ function mergeSearchResults(
   const sources = Array.from(
     new Map(partials.flatMap((partial) => partial.sources).map((source) => [`${source.name}:${source.url ?? ""}`, source])).values()
   );
+  if (items.some((item) => item.sourceNames.includes("일정 기반 내부 계산")) && !sources.some((source) => source.name === "일정 기반 내부 계산")) {
+    sources.push(internalFitnessSource(now));
+  }
   const searchedAtList = partials.map((partial) => partial.searchedAt).sort();
   const searchedAt = searchedAtList[searchedAtList.length - 1] ?? now;
   const provider = partials.find((partial) => partial.sources.length > 0)?.provider ?? partials[0]?.provider ?? null;
